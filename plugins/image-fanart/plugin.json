@@ -1,0 +1,12 @@
+{
+  "id": "builtin.fanart",
+  "name": "Fanart.tv",
+  "version": "1",
+  "description": "从 Fanart.tv 获取高清海报、背景图、片名图和 Logo。",
+  "sdk": ">=1.0,<2.0",
+  "entry": "iris_plugin_fanart",
+  "provides": ["image.fetch", "admin.ui"],
+  "capabilities": ["http", "logger"],
+  "ui": "ui",
+  "pages": [{"id": "settings", "title": "设置"}]
+}

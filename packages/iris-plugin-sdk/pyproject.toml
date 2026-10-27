@@ -1,0 +1,41 @@
+[project]
+name = "iris-plugin-sdk"
+version = "1.0.0"
+description = "Iris 进程外插件 SDK：公共类型、manifest、JSON-RPC 运行时和设置页工具"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+dependencies = [
+    "httpx2[socks]>=2.13.1",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.9",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["iris_plugin_sdk", "tests"]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["iris_plugin_sdk*"]
+
+[tool.setuptools.package-data]
+iris_plugin_sdk = ["py.typed"]

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12 以下的启动画面：暖黑底 + 居中的光圈，和 Flutter 开机动画的第一帧一致 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/launch_background" />
+    <item
+        android:width="240dp"
+        android:height="240dp"
+        android:drawable="@drawable/launch_icon"
+        android:gravity="center" />
+</layer-list>

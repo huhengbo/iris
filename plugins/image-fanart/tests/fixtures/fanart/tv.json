@@ -1,0 +1,44 @@
+{
+  "name": "Dark",
+  "thetvdb_id": "328630",
+  "tvposter": [
+    {
+      "id": "1",
+      "url": "https://assets.fanart.tv/fanart/tv/328630/tvposter/dark-1.jpg",
+      "lang": "de",
+      "likes": "6"
+    }
+  ],
+  "showbackground": [
+    {
+      "id": "2",
+      "url": "https://assets.fanart.tv/fanart/tv/328630/showbackground/dark-2.jpg",
+      "lang": "00",
+      "likes": "5"
+    }
+  ],
+  "tvthumb": [
+    {
+      "id": "3",
+      "url": "https://assets.fanart.tv/fanart/tv/328630/tvthumb/dark-3.jpg",
+      "lang": "en",
+      "likes": "3"
+    }
+  ],
+  "hdtvlogo": [
+    {
+      "id": "4",
+      "url": "https://assets.fanart.tv/fanart/tv/328630/hdtvlogo/dark-4.png",
+      "lang": "en",
+      "likes": "4"
+    }
+  ],
+  "clearlogo": [
+    {
+      "id": "5",
+      "url": "https://assets.fanart.tv/fanart/tv/328630/clearlogo/dark-5.png",
+      "lang": "",
+      "likes": "2"
+    }
+  ]
+}

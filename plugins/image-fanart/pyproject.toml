@@ -1,0 +1,41 @@
+[project]
+name = "iris-plugin-fanart"
+version = "1"
+description = "Iris 的 Fanart.tv 图片插件"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+dependencies = ["iris-plugin-sdk"]
+
+[tool.uv.sources]
+iris-plugin-sdk = { path = "../../packages/iris-plugin-sdk", editable = true }
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.9",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = ["src", "../../packages/iris-plugin-sdk"]
+files = ["src", "tests"]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["iris_plugin_fanart*"]

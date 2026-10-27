@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>115 网盘设置</title>
+    <link rel="stylesheet" href="/plugins/_sdk/iris-plugin.css" />
+    <script src="/plugins/_sdk/iris-plugin.js"></script>
+    <script src="settings.js" defer></script>
+  </head>
+  <body>
+    <div id="settings"></div>
+
+    <section class="iris-card" aria-labelledby="life-title" style="margin-top: 16px">
+      <h2 id="life-title">生活事件</h2>
+      <p class="iris-muted">
+        插件在自己的后台线程里按上面的间隔拉取 115 生活事件，有变动的目录安静 45 秒后推给宿主做定向同步；持续有变动时最多等 5 分钟。漏掉的变动由定时同步兜底。
+      </p>
+      <p id="life-status" class="iris-muted" role="status">正在读取生活事件状态…</p>
+      <p id="life-error" class="iris-error" role="status"></p>
+    </section>
+
+    <section class="iris-card" aria-labelledby="same-playback-title" style="margin-top: 16px">
+      <h2 id="same-playback-title">多端同时播放的限制</h2>
+      <p class="iris-muted">
+        115 的一个直链最多同时 3 个连接，两台设备同时播放同一个文件时容易被拒。开启后，第二台设备会拿到副本的直链。
+      </p>
+      <ul class="iris-error">
+        <li>最多适合两个 IP 同时播放，不要用来多 IP 共享</li>
+        <li>频繁复制、删除可能触发风控，滥用可能导致账号被封</li>
+        <li>副本放在「光圈临时目录/多端播放」，删除后进入 115 回收站</li>
+      </ul>
+    </section>
+  </body>
+</html>

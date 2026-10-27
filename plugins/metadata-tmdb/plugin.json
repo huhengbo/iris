@@ -1,0 +1,19 @@
+{
+  "id": "builtin.tmdb",
+  "name": "TMDB 元数据",
+  "version": "5",
+  "description": "从 TMDB 获取影片资料、演职员和图片。",
+  "sdk": ">=1.0,<2.0",
+  "entry": "iris_plugin_tmdb",
+  "provides": [
+    "metadata.search",
+    "metadata.details",
+    "metadata.images",
+    "metadata.people",
+    "image.fetch",
+    "admin.ui"
+  ],
+  "capabilities": ["logger"],
+  "ui": "ui",
+  "pages": [{"id": "settings", "title": "设置"}]
+}

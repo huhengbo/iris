@@ -1,0 +1,189 @@
+/* Iris 插件页面的基础样式；颜色变量由宿主在 iris:init 时按当前主题覆盖。 */
+:root {
+  --iris-bg: #120e0b;
+  --iris-surface: #1b1611;
+  --iris-surface-high: #241d17;
+  --iris-text: rgba(255, 246, 234, 0.94);
+  --iris-text-muted: rgba(255, 236, 214, 0.6);
+  --iris-accent: #e9a548;
+  --iris-error: #f2877a;
+  --iris-success: #8fcb9b;
+  --iris-border: rgba(255, 236, 214, 0.12);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 24px;
+  background: var(--iris-bg);
+  color: var(--iris-text);
+  font: 14px/1.6 system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+p {
+  margin: 0 0 12px;
+}
+
+.iris-muted {
+  color: var(--iris-text-muted);
+}
+
+.iris-card {
+  max-width: 640px;
+  padding: 20px;
+  border: 1px solid var(--iris-border);
+  border-radius: 12px;
+  background: var(--iris-surface);
+}
+
+.iris-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+label {
+  color: var(--iris-text-muted);
+  font-size: 13px;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--iris-border);
+  border-radius: 8px;
+  background: var(--iris-surface-high);
+  color: var(--iris-text);
+  font: inherit;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--iris-accent);
+  outline-offset: 1px;
+}
+
+button {
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--iris-accent);
+  color: #1a1208;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.iris-secondary {
+  background: transparent;
+  color: var(--iris-text);
+  border: 1px solid var(--iris-border);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.iris-error {
+  color: var(--iris-error);
+}
+
+.iris-success {
+  color: var(--iris-success);
+}
+
+/* 设置页工具包（IrisPlugin.settingsForm） */
+.iris-settings-form {
+  display: block;
+}
+
+.iris-field-help {
+  margin: 0;
+  color: var(--iris-text-muted);
+  font-size: 12px;
+}
+
+.iris-required {
+  color: var(--iris-accent);
+}
+
+.iris-secret {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iris-secret-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.iris-secret-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+button.iris-small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.iris-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.iris-form-status {
+  min-height: 1.6em;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+.iris-form-status.iris-error {
+  color: var(--iris-error);
+}
+
+.iris-form-status.iris-success {
+  color: var(--iris-success);
+}
+
+.iris-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--iris-text);
+  font-size: 14px;
+}
+
+.iris-checkbox input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--iris-accent);
+}
+
+input.iris-number {
+  max-width: 220px;
+}
+
+select.iris-select {
+  cursor: pointer;
+}

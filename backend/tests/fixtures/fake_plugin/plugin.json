@@ -1,0 +1,22 @@
+{
+  "id": "org.example.fake",
+  "name": "测试假插件",
+  "version": "1.0.0",
+  "description": "宿主端进程外运行时测试用的假插件",
+  "sdk": ">=1.0,<2.0",
+  "entry": "fake_plugin",
+  "provides": [
+    "resource.source",
+    "metadata.search",
+    "metadata.details",
+    "metadata.images",
+    "metadata.people",
+    "image.fetch",
+    "subtitle.search",
+    "subtitle.download",
+    "admin.ui"
+  ],
+  "capabilities": ["logger", "http"],
+  "ui": "ui",
+  "pages": [{"id": "settings", "title": "设置", "entry": "index.html"}]
+}
