@@ -1,0 +1,43 @@
+name: iris
+description: "光圈：把 115 网盘里的电影和剧集整理成影视墙"
+publish_to: 'none'
+version: 0.1.0+3
+
+environment:
+  sdk: ^3.13.2
+
+dependencies:
+  android_intent_plus: ^6.1.0
+  cached_network_image: ^4.0.4
+  connectivity_plus: ^7.0.0
+  dio: ^5.11.1
+  flutter:
+    sdk: flutter
+  flutter_cache_manager: ^3.4.5
+  flutter_riverpod: ^3.4.3
+  flutter_web_plugins:
+    sdk: flutter
+  go_router: ^18.0.2
+  image_picker: ^1.1.2
+  media_kit: ^1.2.6
+  media_kit_libs_video: ^1.0.7
+  media_kit_video: ^2.0.1
+  multicast_dns: ^0.3.3+1
+  package_info_plus: ^10.2.2
+  shared_preferences: ^2.5.5
+  url_launcher: ^6.3.2
+  web: ^1.1.1
+  webview_flutter: ^4.14.1
+  xml: ^7.0.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true
+  fonts:
+    # CanvasKit 在国内无法访问 fonts.gstatic.com 时仍能正常显示中文。
+    - family: Noto Sans CJK SC
+      fonts:
+        - asset: assets/fonts/NotoSansCJKsc-Regular.v2.otf
+          weight: 400

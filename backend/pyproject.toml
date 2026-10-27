@@ -1,0 +1,62 @@
+[project]
+name = "iris-backend"
+version = "0.1.0"
+description = "光圈后端"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+dependencies = [
+    "argon2-cffi>=25.1.0",
+    "cryptography>=46",
+    "fastapi>=0.142.2",
+    "httpx2[socks]>=2.13.1",
+    "iris-plugin-sdk",
+    "pillow>=11",
+    "pydantic>=2.13.5",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.uv.sources]
+iris-plugin-sdk = { path = "../packages/iris-plugin-sdk", editable = true }
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.9",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = "../packages/iris-plugin-sdk"
+packages = ["app", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.migrations" = ["*.sql"]
+"app.plugins" = ["static/*"]

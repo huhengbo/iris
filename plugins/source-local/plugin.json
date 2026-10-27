@@ -1,0 +1,10 @@
+{
+  "id": "source.local",
+  "name": "本地存储",
+  "version": "1.0.0",
+  "description": "访问服务器本地挂载目录中的媒体文件。",
+  "sdk": ">=1.0,<2.0",
+  "entry": "iris_plugin_source_local",
+  "provides": ["resource.source"],
+  "capabilities": ["logger"]
+}
