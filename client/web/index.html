@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="家庭影院：浏览 115 网盘里的电影和剧集">
+  <!-- 与 DESIGN.md 的 bg 一致，避免 Flutter 加载前闪白 -->
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#120E0B">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="光圈">
+  <!-- iOS 自己切圆角，用铺满的版本 -->
+  <link rel="apple-touch-icon" href="icons/Icon-maskable-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>光圈</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+<body style="margin: 0; background: #120E0B;">
+  <!-- 开机画面：Flutter 第一帧在同一位置画同一枚光圈后移除（见 lib/app/launch_splash.dart） -->
+  <img id="splash" src="icons/splash.svg" alt="" width="240" height="240"
+    style="position: fixed; left: 50%; top: 50%; margin: -120px 0 0 -120px;">
+  <script>
+    window.addEventListener('flutter-first-frame', () => document.getElementById('splash').remove(), { once: true });
+  </script>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

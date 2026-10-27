@@ -1,0 +1,12 @@
+{
+  "id": "builtin.assrt",
+  "name": "射手网 assrt",
+  "version": "1",
+  "description": "从射手网搜索和下载在线字幕。",
+  "sdk": ">=1.0,<2.0",
+  "entry": "iris_plugin_assrt",
+  "provides": ["subtitle.search", "subtitle.download", "admin.ui"],
+  "capabilities": ["http", "logger"],
+  "ui": "ui",
+  "pages": [{"id": "settings", "title": "设置"}]
+}

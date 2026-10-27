@@ -1,0 +1,12 @@
+{
+  "id": "builtin.douban",
+  "name": "豆瓣",
+  "version": "1",
+  "description": "从豆瓣补充中文片名、简介、评分和海报。",
+  "sdk": ">=1.0,<2.0",
+  "entry": "iris_plugin_douban",
+  "provides": ["metadata.details", "metadata.images", "admin.ui"],
+  "capabilities": ["http", "logger"],
+  "ui": "ui",
+  "pages": [{"id": "settings", "title": "设置"}]
+}

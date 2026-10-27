@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>115 网盘</title>
+    <link rel="stylesheet" href="/plugins/_sdk/iris-plugin.css" />
+    <script src="/plugins/_sdk/iris-plugin.js"></script>
+    <script src="app.js" defer></script>
+    <style>
+      [hidden] {
+        display: none !important;
+      }
+
+      body {
+        padding: 20px;
+      }
+
+      .page {
+        max-width: 640px;
+        margin: 0 auto;
+      }
+
+      .page-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .page-head h1 {
+        margin: 0;
+      }
+
+      .notice {
+        margin-bottom: 12px;
+        padding: 12px 14px;
+        border: 1px solid var(--iris-border);
+        border-radius: 10px;
+        background: var(--iris-surface);
+      }
+
+      .notice.warning {
+        border-color: rgba(233, 165, 72, 0.5);
+      }
+
+      .notice.error {
+        border-color: rgba(242, 135, 122, 0.55);
+      }
+
+      .notice p:last-child {
+        margin-bottom: 0;
+      }
+
+      .section {
+        margin-bottom: 16px;
+      }
+
+      .section h2 {
+        margin-bottom: 6px;
+      }
+
+      .facts,
+      .helper {
+        color: var(--iris-text-muted);
+        font-size: 13px;
+      }
+
+      .space-bar {
+        width: 100%;
+        height: 8px;
+        margin: 10px 0 6px;
+        accent-color: var(--iris-accent);
+      }
+
+      .qr-box {
+        display: flex;
+        justify-content: center;
+        margin: 16px 0 12px;
+      }
+
+      .qr-frame {
+        padding: 12px;
+        border-radius: 12px;
+        background: #fff;
+      }
+
+      .qr-frame img {
+        display: block;
+        width: 192px;
+        height: 192px;
+        image-rendering: pixelated;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .confirm {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border: 1px solid rgba(242, 135, 122, 0.55);
+        border-radius: 10px;
+      }
+
+      .confirm p {
+        margin-top: 0;
+      }
+
+      .status {
+        min-height: 1.6em;
+        margin: 10px 0 0;
+        font-size: 13px;
+      }
+
+      .inline-error {
+        margin: 8px 0 0;
+        font-size: 13px;
+      }
+
+      textarea {
+        min-height: 82px;
+        resize: vertical;
+      }
+
+      .device-note {
+        min-height: 1.4em;
+        margin: 4px 0 0;
+        color: var(--iris-text-muted);
+        font-size: 12px;
+      }
+
+      .device-field {
+        margin: 12px 0 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="page-head">
+        <h1>115 网盘</h1>
+        <button id="refresh" class="iris-secondary iris-small" type="button">
+          刷新
+        </button>
+      </div>
+
+      <section id="rate-notice" class="notice warning" hidden>
+        <h2>115 暂时受限</h2>
+        <p id="rate-text"></p>
+      </section>
+
+      <section id="invalid-notice" class="notice error" hidden>
+        <h2>115 登录已失效</h2>
+        <p>
+          115
+          拒绝了当前凭据，可能是同一设备身份在别处登录被挤下线。同步已暂停，请在下面重新扫码或填写
+          Cookie。
+        </p>
+      </section>
+
+      <section id="account-card" class="iris-card section" hidden>
+        <h2 id="account-name">115 账号</h2>
+        <p id="account-facts" class="facts"></p>
+        <p id="api-status" class="facts"></p>
+        <div id="account-details" hidden>
+          <p id="account-vip"></p>
+          <progress id="space-bar" class="space-bar" max="1" value="0"></progress>
+          <p id="space-text" class="helper"></p>
+        </div>
+        <p id="account-error" class="iris-error inline-error" role="status"></p>
+        <div class="actions">
+          <button id="sign-out" class="iris-secondary" type="button">
+            退出 115 账号
+          </button>
+        </div>
+        <div id="sign-out-confirm" class="confirm" hidden>
+          <p>
+            会删除本系统保存的凭据，同步和播放随即停止。115
+            网盘里的文件不受影响。
+          </p>
+          <div class="actions">
+            <button id="sign-out-yes" type="button">确认退出</button>
+            <button id="sign-out-cancel" class="iris-secondary" type="button">
+              取消
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="intro" class="section" hidden>
+        <h2>还没有接入 115 账号</h2>
+        <p class="helper">
+          接入后才能选择资料库目录、同步片库和播放。凭据保存在插件自己的数据目录里，不会发给任何客户端。
+        </p>
+      </section>
+
+      <section class="iris-card section">
+        <h2 id="login-title">扫码登录</h2>
+        <p class="helper">
+          同一设备身份只能保持一个登录会话，会挤掉其他使用该身份的工具。请选一个其他工具没在用的身份。
+          凭据以明文保存在插件数据目录的 state/credential.json（权限 0600），不会发给任何客户端。
+        </p>
+        <div class="device-field">
+          <label for="device">设备身份</label>
+          <select id="device"></select>
+          <p id="device-note" class="device-note"></p>
+        </div>
+
+        <div id="qr-panel" hidden>
+          <div class="qr-box">
+            <div class="qr-frame">
+              <img id="qr-image" alt="115 登录二维码" />
+            </div>
+          </div>
+          <p id="qr-status-text" class="status" role="status"></p>
+          <div class="actions">
+            <button id="qr-cancel" class="iris-secondary" type="button">
+              取消
+            </button>
+          </div>
+        </div>
+
+        <div id="login-actions" class="actions">
+          <button id="qr-start" type="button">获取二维码</button>
+          <button id="cookie-toggle" class="iris-secondary" type="button">
+            改为粘贴 Cookie
+          </button>
+        </div>
+
+        <div id="cookie-panel" hidden>
+          <div class="device-field">
+            <label for="cookie-input">Cookie</label>
+            <textarea
+              id="cookie-input"
+              maxlength="8192"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              placeholder="UID=…; CID=…; SEID=…; KID=…"
+            ></textarea>
+            <p class="device-note">
+              从已登录 115 的浏览器或其他工具复制。保存前会先向 115 校验。
+            </p>
+          </div>
+          <div class="actions">
+            <button id="cookie-submit" type="button">校验并保存</button>
+            <button id="cookie-cancel" class="iris-secondary" type="button">
+              收起
+            </button>
+          </div>
+          <p id="cookie-error" class="iris-error inline-error" role="status"></p>
+        </div>
+
+        <p id="login-error" class="iris-error inline-error" role="status"></p>
+      </section>
+    </main>
+  </body>
+</html>

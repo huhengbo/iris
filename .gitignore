@@ -1,0 +1,36 @@
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+.claude/
+.idea/
+.vscode/
+
+# 本地密钥与测试凭据（真实 115 Cookie 等），永远不进仓库
+secrets/
+*.secret
+
+# 数据卷
+data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+packages/*/build/
+backend/app/static/
+
+# Flutter
+client/.dart_tool/
+client/build/
+client/.flutter-plugins
+client/.flutter-plugins-dependencies
+client/*.iml

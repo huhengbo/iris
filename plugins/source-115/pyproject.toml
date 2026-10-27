@@ -1,0 +1,55 @@
+[project]
+name = "iris-source-115"
+version = "1.0.0"
+description = "Iris 的 115 网盘资源来源插件"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+dependencies = [
+    "iris-plugin-sdk",
+    "p115client>=0.0.9.7.2,<0.0.10",
+    "python-socks>=2.7",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.18",
+    "pytest>=9.1.1",
+    "ruff>=0.16.9",
+]
+
+[tool.uv.sources]
+iris-plugin-sdk = { path = "../../packages/iris-plugin-sdk", editable = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = ["src", "../../packages/iris-plugin-sdk"]
+packages = ["iris_source_115", "tests"]
+# p115client 没有类型标注，网关只在运行时延迟导入它
+[[tool.mypy.overrides]]
+module = ["p115client.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+# p115client 的依赖 iterdir 在 Python 3.13 上会发 SyntaxWarning，不是本插件的问题
+filterwarnings = ["ignore:.*'is' with 'int' literal.*:SyntaxWarning"]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,23 @@
+{
+  "id": "source.115",
+  "name": "115 网盘",
+  "version": "1.0.0",
+  "description": "115 网盘资源来源：账号登录、浏览、扫描、播放、删除和生活事件监听",
+  "sdk": ">=1.0,<2.0",
+  "entry": "iris_source_115",
+  "provides": ["resource.source", "admin.ui"],
+  "capabilities": ["logger"],
+  "ui": "ui",
+  "pages": [
+    {
+      "id": "account",
+      "title": "账号",
+      "entry": "index.html"
+    },
+    {
+      "id": "settings",
+      "title": "设置",
+      "entry": "settings.html"
+    }
+  ]
+}
