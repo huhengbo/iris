@@ -59,11 +59,19 @@ Web 客户端截图（Android App 和 TV 共用同一套界面代码）。
 | `docs/deploy.md` | 部署、反向代理、备份、升级 |
 | `CONTEXT.md` | 术语表，代码和文档里的名词以它为准 |
 | `DESIGN.md` | 界面设计规范（颜色、排版、组件、动效、TV 适配） |
-| `scripts/` | `check.sh` 全部检查、`build-image.sh` 多架构镜像、`sync-server.sh` 同步到测试服务器、`sync-plugins.sh` 同步插件虚拟环境、`update-openapi.py` 更新接口文档 |
+| `scripts/` | `install.sh` 一键部署、`check.sh` 全部检查、`build-image.sh` 多架构镜像、`sync-server.sh` 同步到测试服务器、`sync-plugins.sh` 同步插件虚拟环境、`update-openapi.py` 更新接口文档 |
 
 ## 部署
 
-详见 [`docs/deploy.md`](docs/deploy.md)。简要步骤：
+需要 Docker 和 Docker Compose v2。一键部署（生成配置和随机密钥、拉取镜像、启动并等待就绪）：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/huhengbo/iris/main/scripts/install.sh | bash
+```
+
+默认部署到当前目录下的 `iris/`，管理员密码随机生成并在结束时显示一次。升级用 `scripts/install.sh upgrade`。可用的环境变量见脚本开头。
+
+详见 [`docs/deploy.md`](docs/deploy.md)。手动部署的简要步骤：
 
 1. 复制 `docker-compose.yml` 和 `.env.example`（改名为 `.env`），填写 `APP_SECRET_KEY`、`APP_ADMIN_PASSWORD` 等。
 2. 建好数据目录：`mkdir data && sudo chown 1000:1000 data`。

@@ -8,7 +8,24 @@
 - 一个外网能访问的域名和 HTTPS 反向代理。播放器从对外访问地址取片，手机在外面也要能访问到。
 - 各插件需要的账号或 API Key，在管理后台的插件页填写，不用环境变量。
 
-## 首次部署
+## 一键部署
+
+`scripts/install.sh` 完成下面「首次部署（手动）」的全部步骤：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/huhengbo/iris/main/scripts/install.sh | bash
+# 或克隆仓库后：scripts/install.sh
+```
+
+- 在 `IRIS_DIR`（默认 `./iris`）下生成 `docker-compose.yml`、`.env`（权限 600，含随机的 `APP_SECRET_KEY` 和管理员密码）和 `data/`，拉取镜像并启动，等 `/api/health` 通过后打印访问地址。管理员密码只在生成时显示一次，之后在 `.env` 里查看。
+- 可选环境变量：`IRIS_DIR`、`IRIS_IMAGE`（默认 `ghcr.io/huhengbo/iris`）、`IRIS_VERSION`（默认 `latest`，生产环境建议固定版本号）、`APP_HTTP_PORT`、`APP_ADMIN_USERNAME`、`APP_ADMIN_PASSWORD`、`TZ`。这些变量只在首次生成 `.env` 时使用，之后以 `.env` 为准。
+- 重复运行是安全的：已有的 `.env` 和 `data/` 不会被改动。
+- 升级：`scripts/install.sh upgrade`（要换版本时加 `IRIS_VERSION=0.2.0`），等价于 `docker compose pull && docker compose up -d`。
+- Linux 上 `data/` 会 `chown` 给容器用户 1000:1000，非 root 时需要 sudo。
+- 镜像在私有仓库时先 `docker login ghcr.io`。
+- 想挂载本地媒体目录，编辑生成的 `docker-compose.yml`，取消注释 `volumes` 里的示例行后执行 `docker compose up -d`。
+
+## 首次部署（手动）
 
 1. 复制仓库里的 `docker-compose.yml` 和 `.env.example`，把后者改名为 `.env`，然后填写：
    - `APP_SECRET_KEY`：至少 32 个字符，用 `python3 -c "import secrets; print(secrets.token_urlsafe(48))"` 生成。**首次使用后不要改**：登录和播放令牌的签名依赖它。

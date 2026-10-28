@@ -34,3 +34,4 @@ client/build/
 client/.flutter-plugins
 client/.flutter-plugins-dependencies
 client/*.iml
+/iris/
