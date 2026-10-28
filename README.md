@@ -59,7 +59,7 @@ Web 客户端截图（Android App 和 TV 共用同一套界面代码）。
 | `docs/deploy.md` | 部署、反向代理、备份、升级 |
 | `CONTEXT.md` | 术语表，代码和文档里的名词以它为准 |
 | `DESIGN.md` | 界面设计规范（颜色、排版、组件、动效、TV 适配） |
-| `scripts/` | `install.sh` 一键部署、`check.sh` 全部检查、`build-image.sh` 多架构镜像、`sync-server.sh` 同步到测试服务器、`sync-plugins.sh` 同步插件虚拟环境、`update-openapi.py` 更新接口文档 |
+| `scripts/` | `install.sh` 一键部署、`check.sh` 全部检查、`build-image.sh` 多架构镜像、`sync-plugins.sh` 同步插件虚拟环境、`update-openapi.py` 更新接口文档 |
 
 ## 部署
 
