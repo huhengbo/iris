@@ -968,6 +968,18 @@ def test_plugins_and_packages_are_empty_json_arrays(
         assert response.json() == []
 
 
+def test_virtual_folders_lists_visible_libraries(
+    client: TestClient, catalog: dict[str, int]
+) -> None:
+    token = emby_login(client)["AccessToken"]
+    folders = emby_get(client, token, "/Library/VirtualFolders")
+    views = emby_get(client, token, "/Library/MediaFolders")["Items"]
+    assert [folder["Name"] for folder in folders] == ["电影", "剧集"]
+    assert [folder["ItemId"] for folder in folders] == [item["Id"] for item in views]
+    assert [folder["CollectionType"] for folder in folders] == ["movies", "tvshows"]
+    assert all(folder["Locations"] == [] for folder in folders)
+
+
 def test_plugin_ui_paths_are_not_rewritten_to_emby() -> None:
     from app.emby.middleware import rewrite_path
 

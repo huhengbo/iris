@@ -292,6 +292,25 @@ def media_folders(session: EmbyUser, db: ReadDb, settings: Settings) -> dict[str
     return _views(db, session.user, settings)
 
 
+@router.get("/emby/library/virtualfolders")
+def virtual_folders(session: EmbyUser, db: ReadDb, settings: Settings) -> list[dict[str, Any]]:
+    # Infuse 登录后用它列媒体库；不暴露存储路径，Locations 留空
+    return [
+        {
+            "Name": library.name,
+            "Locations": [],
+            "CollectionType": "movies" if library.kind == "movie" else "tvshows",
+            "LibraryOptions": {},
+            "ItemId": encode(library.id, LIBRARY),
+            "Id": encode(library.id, LIBRARY),
+            "PrimaryImageItemId": encode(library.id, LIBRARY),
+            "RefreshProgress": 0,
+            "RefreshStatus": "Idle",
+        }
+        for library in BrowseQueries(db, session.user).libraries()
+    ]
+
+
 def _views(db: ReadDb, user: User, settings: Settings) -> dict[str, Any]:
     server_id, _ = _server(settings)
     items = [_library_dto(library, server_id) for library in BrowseQueries(db, user).libraries()]
