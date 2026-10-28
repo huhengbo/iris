@@ -778,6 +778,12 @@ def _empty_theme_media() -> dict[str, Any]:
     }
 
 
+@router.get("/emby/plugins")
+def plugins(_: EmbyUser) -> list[Any]:
+    # Infuse 登录后会查已装插件（InfuseSync）；不返回 JSON 数组会报「意外服务器响应」
+    return []
+
+
 @router.get("/emby/genres")
 def genres(_: EmbyUser) -> dict[str, Any]:
     return {"Items": [], "TotalRecordCount": 0}

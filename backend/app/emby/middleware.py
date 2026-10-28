@@ -21,6 +21,7 @@ EMBY_ROOT_PREFIXES = frozenset(
         "branding",
         "userviews",
         "playback",
+        "plugins",
         "auth",
     }
 )

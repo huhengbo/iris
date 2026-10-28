@@ -955,3 +955,12 @@ def _extra_builtin_plugins(plugin_env: object) -> None:
 
     assert isinstance(plugin_env, PluginEnvironment)
     install_source_local(plugin_env.root)
+
+
+def test_plugins_list_is_empty_json_array(client: TestClient, catalog: dict[str, int]) -> None:
+    token = emby_login(client)["AccessToken"]
+    for path in ("/Plugins", "/emby/Plugins"):
+        response = client.get(path, headers=token_headers(token))
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/json")
+        assert response.json() == []
