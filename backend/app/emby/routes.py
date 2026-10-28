@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from pathlib import Path
 from typing import Any, cast
@@ -56,6 +57,8 @@ from app.playback.service import InlineContent, PlayDenied
 from app.playback.state import WATCHED_RATIO, PlaybackStates
 
 router = APIRouter(include_in_schema=False)
+
+logger = logging.getLogger(__name__)
 
 EMBY_VERSION = "4.8.0.0"
 TICKS = 10_000_000
@@ -655,6 +658,13 @@ def _item_detail(
     settings: Settings,
 ) -> dict[str, Any]:
     internal_id, type_bit = decode(item_id)
+    if type_bit == LIBRARY:
+        # 客户端会按媒体库 ID 取详情（和 Views 里的条目一致）
+        server_id, _ = _server(settings)
+        for library in BrowseQueries(db, session.user).libraries():
+            if library.id == internal_id:
+                return _library_dto(library, server_id)
+        raise NotFound("媒体库不存在")
     if type_bit == PERSON:
         # 人物简介按需拉取一次，和 /api/people/{id} 的行为一致
         ensure_person_detail(database, clock, providers, internal_id)
@@ -1010,6 +1020,8 @@ def playback_info(
 
 
 def _denied(exc: PlayDenied) -> PlainTextResponse:
+    # 播放器只看得到状态码，原因只能靠日志排查
+    logger.warning("Emby 播放被拒绝：%s %s", exc.status, exc.message)
     headers = {"Cache-Control": "no-store"}
     if exc.retry_after is not None:
         headers["Retry-After"] = str(exc.retry_after)

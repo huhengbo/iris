@@ -980,6 +980,18 @@ def test_virtual_folders_lists_visible_libraries(
     assert all(folder["Locations"] == [] for folder in folders)
 
 
+def test_library_item_detail(client: TestClient, catalog: dict[str, int]) -> None:
+    body = emby_login(client)
+    token, uid = body["AccessToken"], body["User"]["Id"]
+    views = emby_get(client, token, f"/Users/{uid}/Views")["Items"]
+    for view in views:
+        detail = emby_get(client, token, f"/Users/{uid}/Items/{view['Id']}")
+        assert detail["Id"] == view["Id"]
+        assert detail["Type"] == "CollectionFolder"
+    missing = client.get(f"/Users/{uid}/Items/999991", headers=token_headers(token))
+    assert missing.status_code == 404
+
+
 def test_plugin_ui_paths_are_not_rewritten_to_emby() -> None:
     from app.emby.middleware import rewrite_path
 
