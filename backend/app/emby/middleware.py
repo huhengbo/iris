@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from fastapi import FastAPI
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -22,6 +24,19 @@ EMBY_ROOT_PREFIXES = frozenset(
         "userviews",
         "playback",
         "plugins",
+        "packages",
+        "studios",
+        "years",
+        "artists",
+        "musicgenres",
+        "playlists",
+        "collections",
+        "livetv",
+        "localization",
+        "notifications",
+        "devices",
+        "scheduledtasks",
+        "startup",
         "auth",
     }
 )
@@ -55,8 +70,18 @@ def rewrite_path(path: str) -> str:
         # /library/3 是 Flutter 的详情页，只有 /Library/MediaFolders 这类 Emby 路径才改写
         if first == "library" and len(segments) == 2 and segments[1].split("/", 1)[0].isdigit():
             return path
+        # /plugins/{id}/ui/... 是 Iris 的插件页面，只有 Emby 的 /Plugins 列表才改写
+        if first == "plugins" and len(segments) == 2 and segments[1]:
+            return path
         return "/emby" + lowered
     return path
+
+
+def is_emby_request(headers: Mapping[str, str]) -> bool:
+    """带 Emby 客户端标识的请求：没有对应路由时应得到 JSON 404，不能落到 Web 页面的 HTML。"""
+    if any(name.lower().startswith("x-emby-") for name in headers):
+        return True
+    return headers.get("authorization", "").lower().startswith(("mediabrowser", "emby"))
 
 
 def install_emby_rewrite(app: FastAPI) -> None:

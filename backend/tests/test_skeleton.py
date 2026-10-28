@@ -142,6 +142,11 @@ def test_serves_web_client_with_spa_fallback(config: AppConfig, clock: FakeClock
         assert client.get("/assets/logo.txt").text == "logo"
         assert "private" not in client.get("/..%2Foutside.txt").text
         assert client.get("/play/unknown").status_code == 404
+        # Emby 客户端（带 X-Emby-* 头）请求未知路径要得到 JSON 404，不能拿到 HTML
+        for headers in ({"X-Emby-Token": "t"}, {"Authorization": 'MediaBrowser Client="Infuse"'}):
+            response = client.get("/Whatever/Else", headers=headers)
+            assert response.status_code == 404
+            assert response.headers["content-type"].startswith("application/json")
 
 
 def test_web_assets_are_revalidated_after_redeploy(config: AppConfig, clock: FakeClock) -> None:

@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
 
+from app.emby.middleware import is_emby_request
 from app.errors import NotFound
 
 # 这些前缀属于后端，不能回退到前端页面，否则错误的 API 路径会得到 200 的 HTML
@@ -26,7 +27,11 @@ def install_web_client(app: FastAPI, static_dir: Path) -> None:
 
     @app.get("/{path:path}", include_in_schema=False)
     def web_client(path: str, request: Request) -> Response:
-        if path in ("api", "emby") or path.startswith(BACKEND_PREFIXES):
+        if (
+            path in ("api", "emby")
+            or path.startswith(BACKEND_PREFIXES)
+            or is_emby_request(request.headers)
+        ):
             raise NotFound()
         if not index.is_file():
             raise NotFound("前端未构建")

@@ -784,8 +784,24 @@ def plugins(_: EmbyUser) -> list[Any]:
     return []
 
 
+@router.get("/emby/packages")
+def packages(_: EmbyUser) -> list[Any]:
+    # Infuse 会查插件目录里有没有 InfuseSync，同样要返回 JSON 数组
+    return []
+
+
 @router.get("/emby/genres")
 def genres(_: EmbyUser) -> dict[str, Any]:
+    return {"Items": [], "TotalRecordCount": 0}
+
+
+@router.get("/emby/studios")
+def studios(_: EmbyUser) -> dict[str, Any]:
+    return {"Items": [], "TotalRecordCount": 0}
+
+
+@router.get("/emby/years")
+def years(_: EmbyUser) -> dict[str, Any]:
     return {"Items": [], "TotalRecordCount": 0}
 
 

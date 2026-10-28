@@ -957,10 +957,31 @@ def _extra_builtin_plugins(plugin_env: object) -> None:
     install_source_local(plugin_env.root)
 
 
-def test_plugins_list_is_empty_json_array(client: TestClient, catalog: dict[str, int]) -> None:
+def test_plugins_and_packages_are_empty_json_arrays(
+    client: TestClient, catalog: dict[str, int]
+) -> None:
     token = emby_login(client)["AccessToken"]
-    for path in ("/Plugins", "/emby/Plugins"):
+    for path in ("/Plugins", "/emby/Plugins", "/Packages", "/emby/Packages"):
         response = client.get(path, headers=token_headers(token))
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("application/json")
         assert response.json() == []
+
+
+def test_plugin_ui_paths_are_not_rewritten_to_emby() -> None:
+    from app.emby.middleware import rewrite_path
+
+    assert rewrite_path("/Plugins") == "/emby/plugins"
+    assert rewrite_path("/plugins/test.ui/ui/index.html") == "/plugins/test.ui/ui/index.html"
+
+
+def test_empty_lists_and_unknown_emby_paths_are_json(
+    client: TestClient, catalog: dict[str, int]
+) -> None:
+    token = emby_login(client)["AccessToken"]
+    for path in ("/Studios", "/Years", "/emby/Genres"):
+        assert emby_get(client, token, path) == {"Items": [], "TotalRecordCount": 0}
+    for path in ("/Collections", "/Playlists/x", "/LiveTv/Info", "/Artists", "/Devices"):
+        response = client.get(path, headers=token_headers(token))
+        assert response.status_code == 404
+        assert response.headers["content-type"].startswith("application/json")
