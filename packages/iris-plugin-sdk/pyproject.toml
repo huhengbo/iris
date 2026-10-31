@@ -2,11 +2,26 @@
 name = "iris-plugin-sdk"
 version = "1.0.0"
 description = "Iris 进程外插件 SDK：公共类型、manifest、JSON-RPC 运行时和设置页工具"
+readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "胡恒博" }]
+keywords = ["iris", "plugin", "sdk", "json-rpc", "metadata", "subtitle"]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
 dependencies = [
     "httpx2[socks]>=2.13.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/huhengbo/iris-plugins"
 
 [dependency-groups]
 dev = [
