@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -11,6 +12,8 @@ from fastapi.testclient import TestClient
 
 from app.config import AppConfig
 from app.main import create_app
+from app.plugins.fetch import SafeFetcher
+from app.plugins.installer import DependencyInstaller
 from tests.fake_cloud115 import FakeCloud115
 from tests.fake_tmdb import FakeTmdb
 from tests.plugin_env import (
@@ -19,6 +22,7 @@ from tests.plugin_env import (
     bind_controls,
     control_for,
 )
+from tests.repository_server import RepositoryHTTPServer
 
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin-password-for-tests"
@@ -43,6 +47,20 @@ def clock() -> FakeClock:
 
 
 @pytest.fixture
+def repository_server() -> Iterator[RepositoryHTTPServer]:
+    """真实 127.0.0.1 HTTP 仓库，测试插件仓库和安装下载。"""
+    server = RepositoryHTTPServer(("127.0.0.1", 0))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.fixture
 def plugin_env(tmp_path: Path) -> PluginEnvironment:
     root = tmp_path / "plugins"
     root.mkdir()
@@ -61,6 +79,7 @@ def config(tmp_path: Path, plugin_env: PluginEnvironment) -> AppConfig:
         admin_password=ADMIN_PASSWORD,
         static_dir=tmp_path / "static",
         plugins_dir=plugin_env.root,
+        default_plugin_repos=(),
     )
 
 
@@ -104,6 +123,9 @@ def make_app(
     config: AppConfig,
     clock: FakeClock,
     runner: SyncRunner,
+    *,
+    plugin_installer: DependencyInstaller | None = None,
+    plugin_fetcher: SafeFetcher | None = None,
 ) -> FastAPI:
     """测试不启动后台线程；插件仍然从 config.plugins_dir 以真实子进程运行。"""
     return create_app(
@@ -113,6 +135,8 @@ def make_app(
         sync_executor=runner.execute,
         delete_executor=runner.execute,
         background_tasks=False,
+        plugin_installer=plugin_installer,
+        plugin_fetcher=plugin_fetcher,
     )
 
 
@@ -241,3 +265,14 @@ def cloud115_roots(client: TestClient, *cids: str) -> list[dict[str, Any]]:
 
 def fake_control(config: AppConfig, plugin_id: str) -> Any:
     return control_for(config.plugins_dir, plugin_id)
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """网络用例默认跳过；显式 -m network 时照常运行。"""
+    markexpr = config.getoption("markexpr") or ""
+    if "network" in markexpr:
+        return
+    skip = pytest.mark.skip(reason="网络用例，使用 -m network 运行")
+    for item in items:
+        if "network" in item.keywords:
+            item.add_marker(skip)

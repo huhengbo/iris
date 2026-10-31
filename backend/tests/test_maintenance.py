@@ -22,6 +22,7 @@ def run(container: AppContainer) -> None:
         container.images,
         container.metadata,
         container.subtitle_auto,
+        container.plugin_repositories,
         container.clock,
     )
 
@@ -29,9 +30,9 @@ def run(container: AppContainer) -> None:
 def test_only_enabled_and_due_tasks_run(client: TestClient, clock: FakeClock) -> None:
     container = container_of(client)
     with container.database.session() as connection:
+        # 只让本次断言的任务启用；字幕和插件更新检查各自有独立线程或网络请求
+        connection.execute("UPDATE scheduled_task SET enabled = 0")
         connection.execute("UPDATE scheduled_task SET enabled = 1 WHERE key = 'cleanup_sessions'")
-        # 自动下载字幕默认启用，但会在独立线程里跑；这里只看维护循环本身的执行记录
-        connection.execute("UPDATE scheduled_task SET enabled = 0 WHERE key = 'download_subtitles'")
         connection.execute(
             "INSERT INTO auth_session (user_id, token_hash, token_version, created_at, expires_at) "
             "VALUES ((SELECT id FROM user LIMIT 1), 'h', 1, '2020-01-01T00:00:00+00:00', "

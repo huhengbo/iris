@@ -18,6 +18,7 @@ from app.ops.backup import BackupService
 from app.ops.cleanup import Cleanup
 from app.ops.schedule import ScheduledTaskRepository
 from app.ops.tasks import TaskRepository, TrackedTask
+from app.plugins.repositories import CHECK_PLUGIN_UPDATES_KEY, PluginRepositories
 from app.priority import Priority
 from app.subtitles.auto import SubtitleAutoDownloader
 
@@ -36,6 +37,7 @@ def run_maintenance(
     images: ImageStore,
     metadata: Metadata,
     subtitles: SubtitleAutoDownloader,
+    repositories: PluginRepositories,
     clock: Clock,
     stop: threading.Event,
 ) -> None:
@@ -43,7 +45,7 @@ def run_maintenance(
 
     while not stop.wait(TICK_SECONDS):
         try:
-            run_due(database, backups, images, metadata, subtitles, clock)
+            run_due(database, backups, images, metadata, subtitles, repositories, clock)
         except Exception:
             logger.exception("maintenance schedule tick failed")
 
@@ -54,6 +56,7 @@ def run_due(
     images: ImageStore,
     metadata: Metadata,
     subtitles: SubtitleAutoDownloader,
+    repositories: PluginRepositories,
     clock: Clock,
 ) -> None:
     now = clock.now()
@@ -66,7 +69,7 @@ def run_due(
         interval = max(60, task.interval or 86400)
         if last is not None and now < last + timedelta(seconds=interval):
             continue
-        _run_one(database, backups, images, metadata, subtitles, clock, task.key)
+        _run_one(database, backups, images, metadata, subtitles, repositories, clock, task.key)
 
 
 def _run_one(
@@ -75,12 +78,16 @@ def _run_one(
     images: ImageStore,
     metadata: Metadata,
     subtitles: SubtitleAutoDownloader,
+    repositories: PluginRepositories,
     clock: Clock,
     key: str,
 ) -> None:
     # 自动下载字幕在独立线程里跑，不占维护循环；已经有一个在跑就等下一次 tick
     if key == SUBTITLE_DOWNLOAD_KEY:
         start_subtitle_download(database, clock, subtitles, created_by=None, automatic=True)
+        return
+    if key == CHECK_PLUGIN_UPDATES_KEY:
+        check_plugin_updates(database, clock, repositories, created_by=None, automatic=True)
         return
     with database.session() as connection:
         task = TaskRepository(connection, clock).create(f"scheduled:{key}")
@@ -129,6 +136,43 @@ def _run_one(
         repository = TaskRepository(connection, clock)
         repository.finish(task.id, error=error, result=result)
         ScheduledTaskRepository(connection, clock).mark_run(key, task.id)
+
+
+def check_plugin_updates(
+    database: Database,
+    clock: Clock,
+    repositories: PluginRepositories,
+    *,
+    created_by: int | None,
+    automatic: bool,
+) -> int:
+    """拉取所有已启用仓库的索引；网络请求在任务事务之外执行。"""
+    with database.session() as connection:
+        task = TaskRepository(connection, clock).create(
+            f"scheduled:{CHECK_PLUGIN_UPDATES_KEY}",
+            created_by=created_by,
+            result={
+                "scheduled_key": CHECK_PLUGIN_UPDATES_KEY,
+                "automatic": automatic,
+                "manual": not automatic,
+            },
+        )
+    result: dict[str, object] = {
+        "scheduled_key": CHECK_PLUGIN_UPDATES_KEY,
+        "automatic": automatic,
+        "manual": not automatic,
+    }
+    error: str | None = None
+    try:
+        result.update(repositories.refresh_all())
+    except Exception as exc:
+        logger.exception("检查插件更新失败")
+        error = str(exc)
+        result["error"] = error
+    with database.session() as connection:
+        TaskRepository(connection, clock).finish(task.id, error=error, result=result)
+        ScheduledTaskRepository(connection, clock).mark_run(CHECK_PLUGIN_UPDATES_KEY, task.id)
+    return task.id
 
 
 def start_subtitle_download(

@@ -19,7 +19,9 @@ from app.library.images import ImageStore
 from app.library.metadata import Metadata
 from app.ops.backup import BackupService
 from app.playback.service import PlaybackService
+from app.plugins.packages import PluginPackages
 from app.plugins.registry import PluginRegistry
+from app.plugins.repositories import PluginRepositories
 from app.plugins.supervisor import PluginSupervisor
 from app.resources.service import ResourceSources
 from app.settings import SettingsService
@@ -44,6 +46,8 @@ class AppContainer:
     subtitle_auto: SubtitleAutoDownloader
     plugins: PluginRegistry
     supervisor: PluginSupervisor
+    plugin_packages: PluginPackages
+    plugin_repositories: PluginRepositories
     resources: ResourceSources
     images: ImageStore
     metadata: Metadata

@@ -25,6 +25,26 @@
         "title": "ActivityOut",
         "type": "object"
       },
+      "AddRepositoryRequest": {
+        "properties": {
+          "accept_risk": {
+            "default": false,
+            "title": "Accept Risk",
+            "type": "boolean"
+          },
+          "url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "AddRepositoryRequest",
+        "type": "object"
+      },
       "AdminCreatedByOut": {
         "properties": {
           "id": {
@@ -1541,6 +1561,158 @@
           "reasons"
         ],
         "title": "CandidateOut",
+        "type": "object"
+      },
+      "CatalogOut": {
+        "properties": {
+          "plugins": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogPluginOut"
+            },
+            "title": "Plugins",
+            "type": "array"
+          },
+          "repositories": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryOut"
+            },
+            "title": "Repositories",
+            "type": "array"
+          },
+          "sdk_version": {
+            "title": "Sdk Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sdk_version",
+          "repositories",
+          "plugins"
+        ],
+        "title": "CatalogOut",
+        "type": "object"
+      },
+      "CatalogPluginOut": {
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "category": {
+            "enum": [
+              "metadata",
+              "subtitle",
+              "resource",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "homepage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Homepage"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "installed_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed Version"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "provides": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Provides",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "repository_id": {
+            "title": "Repository Id",
+            "type": "integer"
+          },
+          "repository_name": {
+            "title": "Repository Name",
+            "type": "string"
+          },
+          "sdk": {
+            "title": "Sdk",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "installed",
+              "update_available",
+              "conflict",
+              "incompatible"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "version",
+          "repository_id",
+          "repository_name",
+          "category",
+          "sdk",
+          "provides",
+          "capabilities",
+          "homepage",
+          "size",
+          "status",
+          "installed_version",
+          "reason"
+        ],
+        "title": "CatalogPluginOut",
         "type": "object"
       },
       "CategoryOut": {
@@ -5375,6 +5547,19 @@
         "title": "OnlineSubtitleCreateOut",
         "type": "object"
       },
+      "PatchRepositoryRequest": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "PatchRepositoryRequest",
+        "type": "object"
+      },
       "PendingCountOut": {
         "properties": {
           "unmatched": {
@@ -6501,8 +6686,51 @@
         "title": "PluginEnabledRequest",
         "type": "object"
       },
+      "PluginInstallRequest": {
+        "properties": {
+          "accept_permissions": {
+            "default": false,
+            "title": "Accept Permissions",
+            "type": "boolean"
+          },
+          "plugin_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Plugin Id",
+            "type": "string"
+          },
+          "repository_id": {
+            "title": "Repository Id",
+            "type": "integer"
+          },
+          "version": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository_id",
+          "plugin_id",
+          "version"
+        ],
+        "title": "PluginInstallRequest",
+        "type": "object"
+      },
       "PluginOut": {
         "properties": {
+          "available_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Version"
+          },
           "built_in": {
             "title": "Built In",
             "type": "boolean"
@@ -6544,6 +6772,27 @@
             "title": "Name",
             "type": "string"
           },
+          "package_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Error"
+          },
+          "package_status": {
+            "enum": [
+              "ok",
+              "installing",
+              "missing",
+              "failed"
+            ],
+            "title": "Package Status",
+            "type": "string"
+          },
           "pages": {
             "items": {
               "$ref": "#/components/schemas/PluginPageOut"
@@ -6578,6 +6827,28 @@
             "title": "Proxy Mode",
             "type": "string"
           },
+          "repository_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Id"
+          },
+          "repository_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Name"
+          },
           "requires": {
             "items": {
               "type": "string"
@@ -6587,6 +6858,15 @@
           },
           "sdk_version": {
             "title": "Sdk Version",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "system",
+              "repository",
+              "local"
+            ],
+            "title": "Source",
             "type": "string"
           },
           "state": {
@@ -6628,7 +6908,13 @@
           "proxy_mode",
           "proxy",
           "updated_at",
-          "pages"
+          "pages",
+          "source",
+          "repository_id",
+          "repository_name",
+          "available_version",
+          "package_status",
+          "package_error"
         ],
         "title": "PluginOut",
         "type": "object"
@@ -6768,6 +7054,37 @@
           }
         },
         "title": "PluginSettingsRequest",
+        "type": "object"
+      },
+      "PluginUninstallRequest": {
+        "properties": {
+          "delete_data": {
+            "default": false,
+            "title": "Delete Data",
+            "type": "boolean"
+          }
+        },
+        "title": "PluginUninstallRequest",
+        "type": "object"
+      },
+      "PluginUpgradeRequest": {
+        "properties": {
+          "accept_permissions": {
+            "default": false,
+            "title": "Accept Permissions",
+            "type": "boolean"
+          },
+          "version": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "PluginUpgradeRequest",
         "type": "object"
       },
       "PluginsOut": {
@@ -7299,6 +7616,128 @@
           "ids"
         ],
         "title": "ReorderRequest",
+        "type": "object"
+      },
+      "RepositoriesOut": {
+        "properties": {
+          "repositories": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryOut"
+            },
+            "title": "Repositories",
+            "type": "array"
+          }
+        },
+        "required": [
+          "repositories"
+        ],
+        "title": "RepositoriesOut",
+        "type": "object"
+      },
+      "RepositoryOut": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "invalid_count": {
+            "title": "Invalid Count",
+            "type": "integer"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "official": {
+            "title": "Official",
+            "type": "boolean"
+          },
+          "plugin_count": {
+            "title": "Plugin Count",
+            "type": "integer"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "ok",
+              "error",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "official",
+          "enabled",
+          "status",
+          "error",
+          "plugin_count",
+          "invalid_count",
+          "last_checked_at",
+          "last_success_at",
+          "created_at"
+        ],
+        "title": "RepositoryOut",
         "type": "object"
       },
       "ResetPasswordRequest": {
@@ -9062,6 +9501,130 @@
           }
         },
         "title": "UpdateUserRequest",
+        "type": "object"
+      },
+      "UploadInstallRequest": {
+        "properties": {
+          "accept_risk": {
+            "default": false,
+            "title": "Accept Risk",
+            "type": "boolean"
+          }
+        },
+        "title": "UploadInstallRequest",
+        "type": "object"
+      },
+      "UploadManifestOut": {
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "provides": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Provides",
+            "type": "array"
+          },
+          "sdk": {
+            "title": "Sdk",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "description",
+          "sdk",
+          "provides",
+          "capabilities"
+        ],
+        "title": "UploadManifestOut",
+        "type": "object"
+      },
+      "UploadOut": {
+        "properties": {
+          "action": {
+            "enum": [
+              "install",
+              "upgrade"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "metadata",
+              "subtitle",
+              "resource",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "installed_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed Version"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/UploadManifestOut"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "upload_id": {
+            "title": "Upload Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_id",
+          "sha256",
+          "size",
+          "manifest",
+          "category",
+          "action",
+          "installed_version",
+          "expires_at"
+        ],
+        "title": "UploadOut",
         "type": "object"
       },
       "UserOut": {
@@ -14404,6 +14967,314 @@
         ]
       }
     },
+    "/api/admin/plugin-catalog": {
+      "get": {
+        "operationId": "plugin_catalog_api_admin_plugin_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Plugin Catalog",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/plugin-repositories": {
+      "get": {
+        "operationId": "list_repositories_api_admin_plugin_repositories_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "List Repositories",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "add_repository_api_admin_plugin_repositories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddRepositoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Add Repository",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/plugin-repositories/refresh": {
+      "post": {
+        "description": "同步并发拉取已启用的仓库；单个失败只影响自己的状态。",
+        "operationId": "refresh_repositories_api_admin_plugin_repositories_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Refresh Repositories",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/plugin-repositories/{repository_id}": {
+      "delete": {
+        "operationId": "delete_repository_api_admin_plugin_repositories__repository_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository_id",
+            "required": true,
+            "schema": {
+              "title": "Repository Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Delete Repository",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_repository_api_admin_plugin_repositories__repository_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repository_id",
+            "required": true,
+            "schema": {
+              "title": "Repository Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchRepositoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Patch Repository",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/admin/plugins": {
       "get": {
         "operationId": "list_plugins_api_admin_plugins_get",
@@ -14440,6 +15311,236 @@
           }
         },
         "summary": "List Plugins",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/plugins/install": {
+      "post": {
+        "operationId": "install_plugin_api_admin_plugins_install_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginInstallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStartedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Install Plugin",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/plugins/uploads": {
+      "post": {
+        "description": "接收原始 zip；边读边计数，超过 50 MiB 立即拒绝。",
+        "operationId": "upload_plugin_api_admin_plugins_uploads_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Upload Plugin",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/plugins/uploads/{upload_id}": {
+      "delete": {
+        "operationId": "delete_uploaded_plugin_api_admin_plugins_uploads__upload_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Delete Uploaded Plugin",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/plugins/uploads/{upload_id}/install": {
+      "post": {
+        "operationId": "install_uploaded_plugin_api_admin_plugins_uploads__upload_id__install_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "title": "Upload Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadInstallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStartedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Install Uploaded Plugin",
         "tags": [
           "admin"
         ]
@@ -14703,6 +15804,143 @@
           }
         },
         "summary": "Create Plugin Session",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/plugins/{plugin_id}/uninstall": {
+      "post": {
+        "operationId": "uninstall_plugin_api_admin_plugins__plugin_id__uninstall_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plugin_id",
+            "required": true,
+            "schema": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginUninstallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Uninstall Plugin",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/plugins/{plugin_id}/upgrade": {
+      "post": {
+        "operationId": "upgrade_plugin_api_admin_plugins__plugin_id__upgrade_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plugin_id",
+            "required": true,
+            "schema": {
+              "title": "Plugin Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginUpgradeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskStartedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Upgrade Plugin",
         "tags": [
           "admin"
         ]

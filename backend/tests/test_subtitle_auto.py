@@ -787,6 +787,7 @@ def test_maintenance_runs_subtitle_download_in_a_thread_without_blocking(
         app_container.images,
         app_container.metadata,
         cast(SubtitleAutoDownloader, fake),
+        app_container.plugin_repositories,
         clock,
     )
     assert fake.started.is_set()
@@ -807,6 +808,7 @@ def test_maintenance_runs_subtitle_download_in_a_thread_without_blocking(
         app_container.images,
         app_container.metadata,
         cast(SubtitleAutoDownloader, fake),
+        app_container.plugin_repositories,
         clock,
     )
     assert fake.calls == 1

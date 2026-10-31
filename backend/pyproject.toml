@@ -41,6 +41,9 @@ packages = ["app", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "network: 需要访问 PyPI 的真实 uv 安装用例；默认跳过，用 -m network 运行",
+]
 
 [tool.coverage.run]
 source = ["app"]

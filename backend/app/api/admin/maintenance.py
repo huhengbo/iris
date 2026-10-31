@@ -17,6 +17,7 @@ from app.deps import (
     Backups,
     Db,
     Images,
+    PluginRepositoriesDep,
     ReadDb,
     SubtitleAuto,
 )
@@ -24,9 +25,14 @@ from app.errors import AppError
 from app.library.recycle_bin import RecycleBin
 from app.library.repository import LibraryRepository
 from app.library.stats import LibraryStatsQueries
-from app.ops.maintenance import SUBTITLE_DOWNLOAD_KEY, start_subtitle_download
+from app.ops.maintenance import (
+    SUBTITLE_DOWNLOAD_KEY,
+    check_plugin_updates,
+    start_subtitle_download,
+)
 from app.ops.schedule import ScheduledTask, ScheduledTaskRepository, ScheduledTaskRunner
 from app.ops.tasks import TaskRepository, tracked_task
+from app.plugins.repositories import CHECK_PLUGIN_UPDATES_KEY
 from app.priority import Priority
 
 logger = logging.getLogger(__name__)
@@ -116,6 +122,7 @@ def run_scheduled(
     backups: Backups,
     images: Images,
     subtitle_auto: SubtitleAuto,
+    repositories: PluginRepositoriesDep,
 ) -> TaskStartedOut:
     if key == SUBTITLE_DOWNLOAD_KEY:
         # 自动下载字幕要在独立线程里跑，不能占着请求的写事务
@@ -124,6 +131,12 @@ def run_scheduled(
         )
         if task_id is None:
             raise AppError(409, "task_already_running", "下载字幕正在运行，请稍后再试")
+        return TaskStartedOut(task_id=task_id)
+    if key == CHECK_PLUGIN_UPDATES_KEY:
+        # 拉取索引会联网，必须在任务事务之外执行
+        task_id = check_plugin_updates(
+            database, clock, repositories, created_by=admin_user.id, automatic=False
+        )
         return TaskStartedOut(task_id=task_id)
     with database.session() as connection:
         task_id = ScheduledTaskRunner(connection, clock, backups, images).run_now(

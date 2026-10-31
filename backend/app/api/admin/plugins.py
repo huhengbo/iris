@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from app.api.schemas import Out
-from app.deps import AdminUser, Plugins
+from app.deps import AdminUser, PluginPackagesDep, Plugins
 from app.errors import AppError, NotFound
+from app.plugins.index_schema import MAX_PACKAGE_BYTES
 from app.settings import clean_proxy, mask_proxy
 
 router = APIRouter(prefix="/admin/plugins", tags=["admin"])
@@ -38,6 +41,12 @@ class PluginOut(Out):
     proxy: str | None
     updated_at: str
     pages: list[PluginPageOut]
+    source: Literal["system", "repository", "local"]
+    repository_id: int | None
+    repository_name: str | None
+    available_version: str | None
+    package_status: Literal["ok", "installing", "missing", "failed"]
+    package_error: str | None
 
 
 class PluginEnabledRequest(BaseModel):
@@ -55,9 +64,113 @@ class PluginsOut(Out):
     plugins: list[PluginOut]
 
 
+class PluginInstallRequest(BaseModel):
+    repository_id: int
+    plugin_id: str = Field(min_length=1, max_length=64)
+    version: str = Field(min_length=1, max_length=32)
+    accept_permissions: bool = False
+
+
+class PluginUpgradeRequest(BaseModel):
+    version: str = Field(min_length=1, max_length=32)
+    accept_permissions: bool = False
+
+
+class PluginUninstallRequest(BaseModel):
+    delete_data: bool = False
+
+
+class UploadInstallRequest(BaseModel):
+    accept_risk: bool = False
+
+
+class TaskStartedOut(Out):
+    task_id: int
+
+
+class UploadManifestOut(Out):
+    id: str
+    name: str
+    version: str
+    description: str
+    sdk: str
+    provides: list[str]
+    capabilities: list[str]
+
+
+class UploadOut(Out):
+    upload_id: str
+    sha256: str
+    size: int
+    manifest: UploadManifestOut
+    category: Literal["metadata", "subtitle", "resource", "other"]
+    action: Literal["install", "upgrade"]
+    installed_version: str | None
+    expires_at: str
+
+
 @router.get("")
 def list_plugins(_: AdminUser, plugins: Plugins) -> PluginsOut:
     return PluginsOut(plugins=[PluginOut(**item) for item in plugins.list()])
+
+
+@router.post("/install", status_code=202)
+def install_plugin(
+    body: PluginInstallRequest,
+    admin: AdminUser,
+    packages: PluginPackagesDep,
+) -> TaskStartedOut:
+    task_id = packages.install(
+        body.repository_id,
+        body.plugin_id,
+        body.version,
+        body.accept_permissions,
+        created_by=admin.id,
+    )
+    return TaskStartedOut(task_id=task_id)
+
+
+@router.post("/uploads", status_code=201)
+async def upload_plugin(
+    request: Request,
+    _: AdminUser,
+    packages: PluginPackagesDep,
+) -> UploadOut:
+    """接收原始 zip；边读边计数，超过 50 MiB 立即拒绝。"""
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type not in ("", "application/zip", "application/octet-stream"):
+        raise AppError(422, "package_invalid", "请求体必须是 zip 压缩包")
+    path = packages.uploads_dir / f".stream-{uuid.uuid4().hex}"
+    size = 0
+    try:
+        with path.open("wb") as file:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_PACKAGE_BYTES:
+                    raise AppError(413, "package_too_large", "插件包不能超过 50 MiB")
+                await run_in_threadpool(file.write, chunk)
+        # 校验要算 sha256、解压并解析 toml，放进线程池，不阻塞事件循环
+        record = await run_in_threadpool(packages.create_upload, path)
+        return UploadOut.model_validate(record)
+    finally:
+        path.unlink(missing_ok=True)
+
+
+@router.post("/uploads/{upload_id}/install", status_code=202)
+def install_uploaded_plugin(
+    upload_id: str,
+    body: UploadInstallRequest,
+    admin: AdminUser,
+    packages: PluginPackagesDep,
+) -> TaskStartedOut:
+    task_id = packages.install_upload(upload_id, body.accept_risk, created_by=admin.id)
+    return TaskStartedOut(task_id=task_id)
+
+
+@router.delete("/uploads/{upload_id}", status_code=204)
+def delete_uploaded_plugin(upload_id: str, _: AdminUser, packages: PluginPackagesDep) -> Response:
+    packages.delete_upload(upload_id)
+    return Response(status_code=204)
 
 
 @router.put("/{plugin_id}/enabled")
@@ -68,6 +181,30 @@ def set_plugin_enabled(
         raise NotFound("插件不存在")
     item = next(item for item in plugins.list() if item["id"] == plugin_id)
     return PluginOut(**item)
+
+
+@router.post("/{plugin_id}/upgrade", status_code=202)
+def upgrade_plugin(
+    plugin_id: str,
+    body: PluginUpgradeRequest,
+    admin: AdminUser,
+    packages: PluginPackagesDep,
+) -> TaskStartedOut:
+    task_id = packages.upgrade(
+        plugin_id, body.version, body.accept_permissions, created_by=admin.id
+    )
+    return TaskStartedOut(task_id=task_id)
+
+
+@router.post("/{plugin_id}/uninstall", status_code=204)
+def uninstall_plugin(
+    plugin_id: str,
+    body: PluginUninstallRequest,
+    _: AdminUser,
+    packages: PluginPackagesDep,
+) -> Response:
+    packages.uninstall(plugin_id, body.delete_data)
+    return Response(status_code=204)
 
 
 @router.put("/{plugin_id}/proxy")

@@ -23,8 +23,12 @@ from app.library.metadata_providers import MetadataProviders
 from app.ops.backup import BackupService
 from app.ops.tasks import TaskRepository
 from app.playback.service import PlaybackService
+from app.plugins.fetch import SafeFetcher
 from app.plugins.host import effective_proxy
+from app.plugins.installer import DependencyInstaller, UvInstaller
+from app.plugins.packages import PluginPackages
 from app.plugins.registry import PluginRegistry
+from app.plugins.repositories import PluginRepositories
 from app.plugins.supervisor import PluginSupervisor
 from app.resources.service import ResourceSources
 from app.settings import SettingsService
@@ -44,6 +48,8 @@ def build_container(
     sync_sleeper: Sleeper | None = None,
     sync_executor: Executor | None = None,
     delete_executor: Executor | None = None,
+    plugin_installer: DependencyInstaller | None = None,
+    plugin_fetcher: SafeFetcher | None = None,
 ) -> AppContainer:
     clock = clock or SystemClock()
     database = Database(config.database_path)
@@ -59,12 +65,33 @@ def build_container(
         proxy=lambda plugin_id: effective_proxy(database, plugin_id),
     )
     plugins = PluginRegistry(database, clock, supervisor)
+    repositories = PluginRepositories(
+        database,
+        clock,
+        fetcher=plugin_fetcher,
+        proxy=settings.plugin_proxy,
+        system_plugin_ids=plugins.built_in_ids,
+    )
+    repositories.ensure_defaults(config.default_plugin_repos)
+    packages = PluginPackages(
+        database,
+        clock,
+        config,
+        supervisor,
+        plugins,
+        repositories,
+        plugin_installer or UvInstaller(config.plugin_packages_dir / ".uv-cache"),
+        fetcher=plugin_fetcher,
+    )
+    plugins.attach_repositories(repositories)
+    plugins.attach_packages(packages)
+    packages.load_installed()
     webdav_service = WebDavService(database, clock)
     with database.session() as connection:
         SyncJobRepository(connection, clock).fail_interrupted()
         TaskRepository(connection, clock).fail_interrupted()
 
-    backups = BackupService(database, config.data_dir, clock, plugin_maintenance=supervisor)
+    backups = BackupService(database, config.data_dir, clock, plugin_maintenance=packages)
     access_signer = TokenSigner(config.secret_key, "access-token")
     login_throttle = LoginThrottle(clock)
     plugins.start_enabled()
@@ -110,6 +137,8 @@ def build_container(
         subtitle_auto=subtitle_auto,
         plugins=plugins,
         supervisor=supervisor,
+        plugin_packages=packages,
+        plugin_repositories=repositories,
         resources=resources,
         images=image_store,
         metadata=metadata,

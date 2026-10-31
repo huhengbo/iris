@@ -28,7 +28,20 @@ class BackgroundWorkers:
                 container.images,
                 container.metadata,
                 container.subtitle_auto,
+                container.plugin_repositories,
                 container.clock,
+            ),
+            # 全新安装的官方仓库一直是 pending，启动后马上拉一次索引；需要网络，不能阻塞启动
+            threading.Thread(
+                target=container.plugin_repositories.refresh_pending,
+                name="plugin-repository-refresh",
+                daemon=True,
+            ),
+            # 恢复备份或上次安装中断后补装缺失的插件；需要网络，不能阻塞启动
+            threading.Thread(
+                target=container.plugin_packages.reinstall_missing,
+                name="plugin-reinstall",
+                daemon=True,
             ),
         ]
 

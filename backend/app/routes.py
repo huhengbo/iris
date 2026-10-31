@@ -65,6 +65,9 @@ from app.api.admin import (
     pending as admin_pending,
 )
 from app.api.admin import (
+    plugin_repositories as admin_plugin_repositories,
+)
+from app.api.admin import (
     plugins as admin_plugins,
 )
 from app.api.admin import (
@@ -124,6 +127,8 @@ def install_routes(app: FastAPI, config: AppConfig) -> None:
     api.include_router(admin_pending.router)
     api.include_router(admin_resources.router)
     api.include_router(admin_plugins.router)
+    api.include_router(admin_plugin_repositories.router)
+    api.include_router(admin_plugin_repositories.catalog_router)
     api.include_router(plugin_ui.admin_router)
     api.include_router(plugin_ui.api_router)
     api.include_router(admin_setup.router)

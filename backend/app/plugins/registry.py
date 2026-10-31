@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from iris_plugin_sdk import (
     AdminUiProvider,
@@ -37,6 +38,10 @@ from app.plugins.supervisor import (
     PluginNotInstalled as SupervisorPluginNotInstalled,
 )
 from app.settings import mask_proxy
+
+if TYPE_CHECKING:
+    from app.plugins.packages import PluginPackages
+    from app.plugins.repositories import PluginRepositories
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +132,10 @@ class PluginRegistry:
         self._database = database
         self._clock = clock
         self._supervisor = supervisor
+        self._lock = threading.RLock()
         self._plugins: dict[str, _Installed] = {}
+        self._repositories: PluginRepositories | None = None
+        self._packages: PluginPackages | None = None
         # 发现失败的插件进不了 _plugins，但列表里仍要显示发现阶段错误。
         discovered = supervisor.discover()
         self._discovered: dict[str, DiscoveredPlugin] = {
@@ -149,47 +157,125 @@ class PluginRegistry:
             )
         self._sync_manifests()
 
+    def attach_repositories(self, repositories: PluginRepositories) -> None:
+        """目录和更新状态由仓库服务提供；构造顺序要求注册中心先发现系统插件。"""
+        self._repositories = repositories
+
+    def attach_packages(self, packages: PluginPackages) -> None:
+        """安装中的插件在列表里显示 installing。"""
+        self._packages = packages
+
     # ---- 发现与落库 ----
 
     def _sync_manifests(self) -> None:
         """把发现的 manifest 同步到数据库，保留管理员设置的启用状态和代理。"""
+        for item in self._installed():
+            self._sync_manifest(item)
+
+    def _sync_manifest(self, item: _Installed) -> None:
+        manifest = item.manifest
         now = to_iso(self._clock.now())
         with self._database.session() as connection:
-            for item in self._installed():
-                manifest = item.manifest
-                connection.execute(
-                    """
-                    INSERT INTO plugin
-                        (id, name, version, sdk_version, provides, requires, trust,
-                         built_in, enabled, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-                    ON CONFLICT (id) DO UPDATE SET
-                        name = excluded.name,
-                        version = excluded.version,
-                        sdk_version = excluded.sdk_version,
-                        provides = excluded.provides,
-                        requires = excluded.requires,
-                        trust = excluded.trust,
-                        built_in = excluded.built_in,
-                        updated_at = excluded.updated_at
-                    WHERE (plugin.name, plugin.version, plugin.sdk_version, plugin.provides,
-                           plugin.requires, plugin.trust, plugin.built_in)
-                        IS NOT (excluded.name, excluded.version, excluded.sdk_version,
-                                excluded.provides, excluded.requires, excluded.trust,
-                                excluded.built_in)
-                    """,
-                    (
-                        manifest.id,
-                        manifest.name,
-                        manifest.version,
-                        manifest.sdk,
-                        json.dumps(manifest.provides, ensure_ascii=False),
-                        json.dumps(manifest.capabilities, ensure_ascii=False),
-                        "built_in" if item.built_in else "external",
-                        int(item.built_in),
-                        now,
+            connection.execute(
+                """
+                INSERT INTO plugin
+                    (id, name, version, sdk_version, provides, requires, trust,
+                     built_in, enabled, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                ON CONFLICT (id) DO UPDATE SET
+                    name = excluded.name,
+                    version = excluded.version,
+                    sdk_version = excluded.sdk_version,
+                    provides = excluded.provides,
+                    requires = excluded.requires,
+                    trust = excluded.trust,
+                    built_in = excluded.built_in,
+                    updated_at = excluded.updated_at
+                WHERE (plugin.name, plugin.version, plugin.sdk_version, plugin.provides,
+                       plugin.requires, plugin.trust, plugin.built_in)
+                    IS NOT (excluded.name, excluded.version, excluded.sdk_version,
+                            excluded.provides, excluded.requires, excluded.trust,
+                            excluded.built_in)
+                """,
+                (
+                    manifest.id,
+                    manifest.name,
+                    manifest.version,
+                    manifest.sdk,
+                    json.dumps(manifest.provides, ensure_ascii=False),
+                    json.dumps(manifest.capabilities, ensure_ascii=False),
+                    "built_in" if item.built_in else "external",
+                    int(item.built_in),
+                    now,
+                ),
+            )
+
+    # ---- 动态增删换（仓库和本地安装） ----
+
+    def add(self, discovered: DiscoveredPlugin) -> None:
+        """把已经注册到 supervisor 的插件加入注册中心；manifest 不合法时只记录。"""
+        manifest = discovered.manifest
+        item: _Installed | None = None
+        with self._lock:
+            self._discovered[discovered.plugin_id] = discovered
+            if manifest is not None:
+                item = _Installed(
+                    manifest=manifest,
+                    directory=discovered.directory,
+                    built_in=discovered.built_in,
+                    providers=providers_for(
+                        partial(self._supervisor.client, manifest.id),
+                        manifest,
+                        discovered.directory,
                     ),
                 )
+                self._plugins[manifest.id] = item
+        if item is not None:
+            self._sync_manifest(item)
+
+    def replace(self, plugin_id: str, discovered: DiscoveredPlugin) -> None:
+        """换掉已停止插件的目录：重建 providers，因为 admin.ui 绑定了旧的 ui_root。"""
+        manifest = discovered.manifest
+        if manifest is None:
+            raise ValueError("替换插件时 manifest 不能为空")
+        if manifest.id != plugin_id:
+            raise ValueError(f"manifest.id {manifest.id} 与已安装的 {plugin_id} 不一致")
+        item = _Installed(
+            manifest=manifest,
+            directory=discovered.directory,
+            built_in=discovered.built_in,
+            providers=providers_for(
+                partial(self._supervisor.client, plugin_id), manifest, discovered.directory
+            ),
+        )
+        with self._lock:
+            self._plugins[plugin_id] = item
+            self._discovered[plugin_id] = discovered
+        self._sync_manifest(item)
+
+    def remove(self, plugin_id: str) -> None:
+        with self._lock:
+            self._plugins.pop(plugin_id, None)
+            self._discovered.pop(plugin_id, None)
+
+    def built_in_ids(self) -> set[str]:
+        with self._lock:
+            ids = {plugin_id for plugin_id, item in self._plugins.items() if item.built_in}
+            ids.update(plugin_id for plugin_id, item in self._discovered.items() if item.built_in)
+        with self._database.read_session() as connection:
+            ids.update(
+                str(row[0])
+                for row in connection.execute("SELECT id FROM plugin WHERE built_in = 1")
+            )
+        return ids
+
+    def start_plugin(self, plugin_id: str) -> None:
+        """启动单个插件；失败时抛 PluginStartFailed。"""
+        self._start(plugin_id)
+
+    def installed_ids(self) -> set[str]:
+        with self._lock:
+            return set(self._plugins)
 
     # ---- 生命周期 ----
 
@@ -211,7 +297,8 @@ class PluginRegistry:
         item = self._plugin(plugin_id)
         if enabled:
             if item is None:
-                discovered = self._discovered.get(plugin_id)
+                with self._lock:
+                    discovered = self._discovered.get(plugin_id)
                 if discovered is not None and discovered.manifest is None:
                     error = discovered.error
                     raise PluginStartFailed(
@@ -368,7 +455,8 @@ class PluginRegistry:
     # ---- 查询 ----
 
     def _installed(self) -> list[_Installed]:
-        return [self._plugins[plugin_id] for plugin_id in sorted(self._plugins)]
+        with self._lock:
+            return [self._plugins[plugin_id] for plugin_id in sorted(self._plugins)]
 
     def manifests(self) -> list[PluginManifest]:
         """当前安装插件的声明，按 ID 排序。"""
@@ -382,14 +470,23 @@ class PluginRegistry:
         item = self._plugin(plugin_id)
         if item is not None:
             return item.built_in
-        discovered = self._discovered.get(plugin_id)
-        return discovered is not None and discovered.built_in
+        with self._lock:
+            discovered = self._discovered.get(plugin_id)
+        if discovered is not None and discovered.built_in:
+            return True
+        # 插件目录暂时缺失时，数据库里的 built_in 仍是系统插件的唯一凭据
+        with self._database.read_session() as connection:
+            row = connection.execute(
+                "SELECT built_in FROM plugin WHERE id = ?", (plugin_id,)
+            ).fetchone()
+        return row is not None and bool(row[0])
 
     def _display_name(self, plugin_id: str) -> str:
         item = self._plugin(plugin_id)
         if item is not None:
             return item.manifest.name
-        discovered = self._discovered.get(plugin_id)
+        with self._lock:
+            discovered = self._discovered.get(plugin_id)
         return discovered.directory.name if discovered is not None else plugin_id
 
     def pages(self, plugin_id: str) -> tuple[PluginPage, ...]:
@@ -399,45 +496,76 @@ class PluginRegistry:
     def list(self) -> list[dict[str, Any]]:
         with self._database.read_session() as connection:
             rows = connection.execute(
-                "SELECT id, name, version, sdk_version, provides, requires, trust, "
-                "built_in, enabled, updated_at, proxy_mode, proxy "
-                "FROM plugin ORDER BY id"
+                "SELECT p.id AS plugin_id, p.name, p.version, p.sdk_version, p.provides, "
+                "p.requires, p.trust, p.built_in, p.enabled, p.updated_at, p.proxy_mode, "
+                "p.proxy, i.source AS install_source, "
+                "i.repository_id AS install_repository_id, "
+                "i.version AS install_version, i.status AS install_status, "
+                "i.error AS install_error, r.name AS repository_name, r.url AS repository_url "
+                "FROM plugin p "
+                "LEFT JOIN plugin_install i ON i.plugin_id = p.id "
+                "LEFT JOIN plugin_repository r ON r.id = i.repository_id "
+                "ORDER BY p.id"
             ).fetchall()
-        installed = self._plugins
+            install_rows = connection.execute(
+                "SELECT i.plugin_id, i.source, i.repository_id, i.version, i.status, i.error, "
+                "r.name AS repository_name, r.url AS repository_url "
+                "FROM plugin_install i "
+                "LEFT JOIN plugin_repository r ON r.id = i.repository_id "
+                "ORDER BY i.plugin_id"
+            ).fetchall()
+        with self._lock:
+            installed = dict(self._plugins)
+            discovered = dict(self._discovered)
         installed_ids = set(installed)
         items: dict[str, dict[str, Any]] = {}
         for row in rows:
-            plugin_id = str(row[0])
+            plugin_id = str(row["plugin_id"])
             item = installed.get(plugin_id)
             manifest = None if item is None else item.manifest
             # 分类按当前进程的 manifest 推导；已卸载的旧记录只能看数据库里存的能力
-            provides = manifest.provides if manifest is not None else tuple(json.loads(row[4]))
-            proxy_mode = cast(ProxyMode, row[10])
+            provides = (
+                manifest.provides
+                if manifest is not None
+                else tuple(json.loads(str(row["provides"])))
+            )
+            proxy_mode = cast(ProxyMode, row["proxy_mode"])
             supervisor_state = (
                 self._supervisor.state(plugin_id) if manifest is not None else "stopped"
             )
             error = self._supervisor.error(plugin_id) if manifest is not None else None
+            built_in = bool(row["built_in"])
+            install_version = row["install_version"]
+            installed_version = str(install_version or row["version"])
+            source, repository_id, repository_name = self._source_of(
+                plugin_id,
+                built_in=built_in,
+                install_source=row["install_source"],
+                install_repository_id=row["install_repository_id"],
+                repository_name=row["repository_name"],
+                repository_url=row["repository_url"],
+            )
             items[plugin_id] = {
                 "id": plugin_id,
-                "name": row[1],
-                "version": row[2],
-                "sdk_version": row[3],
+                "name": row["name"],
+                "version": row["version"],
+                "sdk_version": row["sdk_version"],
                 "description": manifest.description if manifest is not None else "",
                 "category": plugin_category(provides),
-                "provides": json.loads(row[4]),
-                "requires": json.loads(row[5]),
-                "trust": row[6],
-                "built_in": bool(row[7]),
-                "enabled": bool(row[8]),
-                "updated_at": row[9],
+                "provides": json.loads(str(row["provides"])),
+                "requires": json.loads(str(row["requires"])),
+                "trust": row["trust"],
+                "built_in": built_in,
+                "enabled": bool(row["enabled"]),
+                "updated_at": row["updated_at"],
                 "state": _plugin_state(
-                    plugin_id, bool(row[8]), installed_ids, supervisor_state, error
+                    plugin_id, bool(row["enabled"]), installed_ids, supervisor_state, error
                 ),
                 "error": None if error is None else error.message,
                 "proxy_mode": proxy_mode,
                 "proxy": (
-                    mask_proxy(str(row[11]))
-                    if proxy_mode == "custom" and row[11] is not None
+                    mask_proxy(str(row["proxy"]))
+                    if proxy_mode == "custom" and row["proxy"] is not None
                     else None
                 ),
                 # 页面只来自当前安装的 manifest；已卸载插件的旧记录没有页面
@@ -446,23 +574,73 @@ class PluginRegistry:
                     if manifest is not None
                     else []
                 ),
+                "source": source,
+                "repository_id": repository_id,
+                "repository_name": repository_name,
+                "available_version": self._available_version(
+                    plugin_id, source, installed_version, repository_id
+                ),
+                "package_status": self._package_status(plugin_id, built_in, row["install_status"]),
+                "package_error": row["install_error"],
             }
-        # manifest 不合法的插件没有数据库记录，也要出现在列表里并带上发现阶段错误。
-        for plugin_id, discovered in self._discovered.items():
-            if discovered.manifest is not None or plugin_id in installed:
+        # 清单里有、plugin 表里没有的安装记录（例如恢复备份后目录丢失）也要出现在列表里。
+        for row in install_rows:
+            plugin_id = str(row["plugin_id"])
+            if plugin_id in items:
                 continue
-            error = discovered.error
+            source, repository_id, repository_name = self._source_of(
+                plugin_id,
+                built_in=False,
+                install_source=row["source"],
+                install_repository_id=row["repository_id"],
+                repository_name=row["repository_name"],
+                repository_url=row["repository_url"],
+            )
+            status = self._package_status(plugin_id, False, row["status"])
             items[plugin_id] = {
                 "id": plugin_id,
-                "name": discovered.directory.name,
+                "name": plugin_id,
+                "version": str(row["version"]),
+                "sdk_version": "",
+                "description": "",
+                "category": "other",
+                "provides": [],
+                "requires": [],
+                "trust": "external",
+                "built_in": False,
+                "enabled": False,
+                "updated_at": "",
+                "state": "not_installed",
+                "error": row["error"],
+                "proxy_mode": "inherit",
+                "proxy": None,
+                "pages": [],
+                "source": source,
+                "repository_id": repository_id,
+                "repository_name": repository_name,
+                "available_version": self._available_version(
+                    plugin_id, source, str(row["version"]), repository_id
+                ),
+                "package_status": status,
+                "package_error": row["error"],
+            }
+        # manifest 不合法的插件没有数据库记录，也要出现在列表里并带上发现阶段错误。
+        for plugin_id, entry in discovered.items():
+            if entry.manifest is not None or plugin_id in installed:
+                continue
+            error = entry.error
+            built_in = entry.built_in
+            items[plugin_id] = {
+                "id": plugin_id,
+                "name": entry.directory.name,
                 "version": "",
                 "sdk_version": "",
                 "description": "",
                 "category": "other",
                 "provides": [],
                 "requires": [],
-                "trust": "built_in" if discovered.built_in else "external",
-                "built_in": discovered.built_in,
+                "trust": "built_in" if built_in else "external",
+                "built_in": built_in,
                 "enabled": False,
                 "updated_at": "",
                 "state": "failed",
@@ -470,8 +648,59 @@ class PluginRegistry:
                 "proxy_mode": "inherit",
                 "proxy": None,
                 "pages": [],
+                "source": "system" if built_in else "local",
+                "repository_id": None,
+                "repository_name": None,
+                "available_version": None,
+                "package_status": "ok" if built_in else "missing",
+                "package_error": None,
             }
         return [items[plugin_id] for plugin_id in sorted(items)]
+
+    def _source_of(
+        self,
+        plugin_id: str,
+        *,
+        built_in: bool,
+        install_source: Any,
+        install_repository_id: Any,
+        repository_name: Any,
+        repository_url: Any,
+    ) -> tuple[Literal["system", "repository", "local"], int | None, str | None]:
+        if built_in:
+            return "system", None, None
+        if install_source == "repository" and isinstance(install_repository_id, int):
+            name = str(repository_name) if repository_name else None
+            if name is None and repository_url:
+                name = str(repository_url)
+            return "repository", install_repository_id, name
+        return "local", None, None
+
+    def _available_version(
+        self,
+        plugin_id: str,
+        source: str,
+        installed_version: str,
+        repository_id: int | None,
+    ) -> str | None:
+        if source != "repository" or self._repositories is None:
+            return None
+        return self._repositories.available_version(plugin_id, installed_version, repository_id)
+
+    def _package_status(
+        self, plugin_id: str, built_in: bool, install_status: Any
+    ) -> Literal["ok", "installing", "missing", "failed"]:
+        if built_in:
+            return "ok"
+        if self._packages is not None:
+            status = self._packages.package_status(plugin_id)
+            if status is not None:
+                return status
+        if install_status == "installed":
+            return "ok"
+        if install_status == "failed":
+            return "failed"
+        return "missing"
 
     def proxy_config(self, plugin_id: str) -> tuple[ProxyMode, str | None] | None:
         """插件当前的代理模式和原始地址（未打码）；记录不存在时返回 None。"""
@@ -546,4 +775,5 @@ class PluginRegistry:
         return row is not None and bool(row[0])
 
     def _plugin(self, plugin_id: str) -> _Installed | None:
-        return self._plugins.get(plugin_id)
+        with self._lock:
+            return self._plugins.get(plugin_id)

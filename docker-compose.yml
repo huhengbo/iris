@@ -17,6 +17,12 @@ services:
       TZ: "${TZ:-Asia/Shanghai}"
       APP_CORS_ORIGINS: "${APP_CORS_ORIGINS:-}"
       APP_PLUGINS_DIR: "${APP_PLUGINS_DIR:-/app/plugins}"
+      # 默认官方仓库；在 .env 里设为空字符串表示不配置默认仓库，多个地址用逗号分隔。
+      # 这里显式写出默认值：compose 的映射语法无法在变量未设置时省略这个键，
+      # 而空字符串在应用里是「没有默认仓库」的意思。
+      APP_DEFAULT_PLUGIN_REPOS: "${APP_DEFAULT_PLUGIN_REPOS-https://huhengbo.github.io/iris-plugins/index.json}"
+      # 插件依赖安装使用的 PyPI 镜像；uv 读取 UV_DEFAULT_INDEX，不走 uv sync --frozen
+      UV_DEFAULT_INDEX: "${UV_DEFAULT_INDEX:-https://pypi.org/simple}"
     security_opt:
       - no-new-privileges:true
     volumes:

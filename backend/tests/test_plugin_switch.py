@@ -235,6 +235,6 @@ def _config_proxy(control: Any) -> str | None:
 
 def test_container_wires_backup_and_media_dir(client: TestClient, config: AppConfig) -> None:
     container = client.app.state.container  # type: ignore[attr-defined]
-    assert container.backups._plugin_maintenance is container.supervisor
+    assert container.backups._plugin_maintenance is container.plugin_packages
     context = container.supervisor.client("builtin.tmdb").call("test.context", {}, timeout=5.0)
     assert context["media_dir"] == str(config.media_dir)

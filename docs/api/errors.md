@@ -14,6 +14,7 @@
 | `artwork_download_failed` | 400 |
 | `batch_in_progress` | 409 |
 | `cannot_modify_self` | 400 |
+| `catalog_changed` | 409 |
 | `database_corrupt` | 500 |
 | `delete_confirmation_required` | 409 |
 | `empty_selection` | 400 |
@@ -44,6 +45,7 @@
 | `invalid_order` | 400 |
 | `invalid_proxy` | 400 |
 | `invalid_public_url` | 400 |
+| `invalid_repository_url` | 400 |
 | `invalid_schedule` | 400 |
 | `invalid_server_name` | 400 |
 | `invalid_source_config` | 400 |
@@ -74,17 +76,35 @@
 | `not_pending_file` | 409 |
 | `not_playable` | 400 |
 | `not_watchlistable` | 400 |
+| `package_invalid` | 422 |
+| `package_too_large` | 413 |
 | `payload_too_large` | 413 |
+| `permissions_not_accepted` | 400 |
+| `plugin_built_in` | 409 |
+| `plugin_conflict` | 409 |
 | `plugin_disabled` | 409 |
+| `plugin_id_conflict` | 409 |
+| `plugin_incompatible` | 409 |
 | `plugin_in_use` | 409 |
 | `plugin_installed` | 409 |
+| `plugin_local_source` | 409 |
 | `plugin_manifest_invalid` | 409 |
 | `plugin_manifest_mismatch` | 409 |
+| `plugin_no_update` | 409 |
+| `plugin_not_in_repository` | 404 |
 | `plugin_not_installed` | 409 |
+| `plugin_operation_running` | 409 |
 | `plugin_sdk_incompatible` | 409 |
 | `plugin_start_failed` | 409 |
+| `plugin_version_not_newer` | 409 |
 | `primary_cannot_match` | 400 |
 | `public_url_not_configured` | 409 |
+| `repository_exists` | 409 |
+| `repository_in_use` | 409 |
+| `repository_invalid` | 422 |
+| `repository_official` | 409 |
+| `repository_schema_unsupported` | 422 |
+| `repository_unreachable` | 422 |
 | `resource_delete_unsupported` | 409 |
 | `resource_not_found` | 404 |
 | `resource_plugin_disabled` | 409 / 503 |
@@ -96,6 +116,7 @@
 | `resource_unavailable` | 502 / 503 |
 | `restore_confirmation_required` | 400 |
 | `restore_failed` | 500 |
+| `risk_not_accepted` | 400 |
 | `selection_too_large` | 413 |
 | `session_not_stoppable` | 409 |
 | `source_name_taken` | 409 |
@@ -114,6 +135,7 @@
 | `unauthorized` | 401 |
 | `unknown_library` | 400 |
 | `unknown_metadata_provider` | 400 / 409 |
+| `upload_not_found` | 404 |
 | `username_taken` | 409 |
 | `weak_password` | 400 |
 | `work_matched` | 409 |

@@ -81,6 +81,10 @@ class PluginStartFailed(PluginRuntimeError):
     code = "plugin_start_failed"
 
 
+class PluginIdConflict(PluginRuntimeError):
+    code = "plugin_id_conflict"
+
+
 @dataclass(frozen=True)
 class DiscoveredPlugin:
     plugin_id: str
@@ -166,12 +170,52 @@ class PluginSupervisor:
             for directory in sorted(self._plugins_dir.iterdir()):
                 if not directory.is_dir() or not (directory / "plugin.json").is_file():
                     continue
-                record = self._load(directory)
+                record = self._load(directory, built_in=True)
                 if record.plugin_id in self._plugins:
                     self._log.error("插件 id 重复，忽略：%s", directory)
                     continue
                 self._plugins[record.plugin_id] = record
             return self.discovered()
+
+    def register(self, directory: Path, *, built_in: bool) -> DiscoveredPlugin:
+        """把仓库或本地安装好的插件目录加入运行时；id 已存在时由调用方处理冲突。"""
+        record = self._load(directory, built_in=built_in)
+        with self._lock:
+            if record.plugin_id in self._plugins:
+                raise PluginIdConflict(record.plugin_id, f"插件 id {record.plugin_id} 已被占用")
+            self._plugins[record.plugin_id] = record
+        self._log.info("注册插件 %s：%s", record.plugin_id, directory)
+        return _discovered(record)
+
+    def replace(self, plugin_id: str, directory: Path) -> DiscoveredPlugin:
+        """切换已停止插件到新目录和 manifest；调用方负责先 stop。"""
+        with self._lock:
+            record = self._require(plugin_id)
+            with record.lock:
+                if record.process is not None and record.process.poll() is None:
+                    raise PluginStartFailed(plugin_id, "插件还在运行，不能切换目录")
+                replacement = self._load(directory, built_in=record.built_in)
+                if replacement.plugin_id != plugin_id:
+                    raise PluginManifestMismatch(
+                        plugin_id,
+                        f"新目录的 manifest.id 是 {replacement.plugin_id}，与已安装的 id 不一致",
+                    )
+                record.directory = replacement.directory
+                record.manifest = replacement.manifest
+                record.discovery_error = replacement.discovery_error
+                record.failure_count = 0
+                record.last_error = replacement.discovery_error
+                record.generation += 1
+                record.state = "failed" if replacement.discovery_error is not None else "stopped"
+                self._log.info("插件 %s 已切换到目录 %s", plugin_id, directory)
+                return _discovered(record)
+
+    def unregister(self, plugin_id: str) -> None:
+        """停止并从运行时移除插件；目录由调用方清理。"""
+        self.stop(plugin_id)
+        with self._lock:
+            self._plugins.pop(plugin_id, None)
+        self._log.info("已从运行时移除插件 %s", plugin_id)
 
     def discovered(self) -> list[DiscoveredPlugin]:
         with self._lock:
@@ -194,7 +238,7 @@ class PluginSupervisor:
             record = self._plugins.get(plugin_id)
         return None if record is None else record.manifest
 
-    def _load(self, directory: Path) -> _Plugin:
+    def _load(self, directory: Path, *, built_in: bool) -> _Plugin:
         try:
             manifest = load_manifest(directory)
         except PluginSdkIncompatibleError as exc:
@@ -204,34 +248,33 @@ class PluginSupervisor:
                 directory=directory,
                 manifest=None,
                 discovery_error=PluginSdkIncompatible(plugin_id, str(exc)),
-                built_in=True,
+                built_in=built_in,
                 lock=threading.RLock(),
                 stop_event=threading.Event(),
                 state="failed",
             )
         except PluginManifestError as exc:
-            return self._invalid(directory.name, directory, str(exc))
+            return self._invalid(directory.name, directory, str(exc), built_in=built_in)
         plugin_id = manifest.id
-        # 当前只从宿主自带的插件目录加载，全部按内置插件对待；第三方安装流程不在这一波范围。
         return _Plugin(
             plugin_id=plugin_id,
             directory=directory,
             manifest=manifest,
             discovery_error=None,
-            built_in=True,
+            built_in=built_in,
             lock=threading.RLock(),
             stop_event=threading.Event(),
             state="stopped",
         )
 
-    def _invalid(self, plugin_id: str, directory: Path, message: str) -> _Plugin:
+    def _invalid(self, plugin_id: str, directory: Path, message: str, *, built_in: bool) -> _Plugin:
         self._log.error("插件 %s 的 manifest 不合法：%s", plugin_id, message)
         return _Plugin(
             plugin_id=plugin_id,
             directory=directory,
             manifest=None,
             discovery_error=PluginManifestInvalid(plugin_id, message),
-            built_in=True,
+            built_in=built_in,
             lock=threading.RLock(),
             stop_event=threading.Event(),
             state="failed",
@@ -687,3 +730,13 @@ class PluginSupervisor:
         if record is None:
             raise PluginNotInstalled(plugin_id, f"插件 {plugin_id} 没有安装")
         return record
+
+
+def _discovered(record: _Plugin) -> DiscoveredPlugin:
+    return DiscoveredPlugin(
+        plugin_id=record.plugin_id,
+        directory=record.directory,
+        manifest=record.manifest,
+        error=record.discovery_error,
+        built_in=record.built_in,
+    )

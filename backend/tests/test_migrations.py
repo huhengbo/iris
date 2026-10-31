@@ -22,6 +22,7 @@ def test_fresh_database_gets_the_baseline_schema(tmp_path: Path, clock: FakeCloc
     tables = {row[0] for row in raw.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert {"library_hub", "library_plugin", "user_favorite", "user_watchlist"} <= tables
     assert {"online_subtitle", "media_item_external_id", "media_item_source"} <= tables
+    assert {"plugin_repository", "plugin_install"} <= tables
     assert "home_hub" not in tables
     assert raw.execute(
         "SELECT enabled, interval FROM scheduled_task WHERE key = 'download_subtitles'"
@@ -34,6 +35,7 @@ def test_migrations_are_baseline_then_source_neutral() -> None:
         (1, "baseline"),
         (2, "source_neutral"),
         (3, "source_busy"),
+        (4, "plugin_repositories"),
     ]
 
 
@@ -241,7 +243,12 @@ def test_source_neutral_migration_renames_and_converts_scope_keys(
         assert raw.execute("PRAGMA foreign_key_check").fetchall() == []
         assert raw.execute(
             "SELECT version, name FROM schema_migration ORDER BY version"
-        ).fetchall() == [(1, "baseline"), (2, "source_neutral"), (3, "source_busy")]
+        ).fetchall() == [
+            (1, "baseline"),
+            (2, "source_neutral"),
+            (3, "source_busy"),
+            (4, "plugin_repositories"),
+        ]
     finally:
         raw.close()
 

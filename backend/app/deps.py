@@ -21,7 +21,9 @@ from app.library.metadata import Metadata
 from app.library.metadata_providers import MetadataProviders
 from app.ops.backup import BackupService
 from app.playback.service import PlaybackService
+from app.plugins.packages import PluginPackages
 from app.plugins.registry import PluginRegistry
+from app.plugins.repositories import PluginRepositories
 from app.resources.service import ResourceSources
 from app.settings import SettingsService
 from app.subtitles.auto import SubtitleAutoDownloader
@@ -99,6 +101,14 @@ def get_plugins(container: Container) -> PluginRegistry:
     return container.plugins
 
 
+def get_plugin_packages(container: Container) -> PluginPackages:
+    return container.plugin_packages
+
+
+def get_plugin_repositories(container: Container) -> PluginRepositories:
+    return container.plugin_repositories
+
+
 def get_resources(container: Container) -> ResourceSources:
     return container.resources
 
@@ -150,6 +160,8 @@ AppMetadata = Annotated[Metadata, Depends(get_metadata)]
 MetadataPlugins = Annotated[MetadataProviders, Depends(get_metadata_providers)]
 Images = Annotated[ImageStore, Depends(get_images)]
 Plugins = Annotated[PluginRegistry, Depends(get_plugins)]
+PluginPackagesDep = Annotated[PluginPackages, Depends(get_plugin_packages)]
+PluginRepositoriesDep = Annotated[PluginRepositories, Depends(get_plugin_repositories)]
 Resources = Annotated[ResourceSources, Depends(get_resources)]
 Backups = Annotated[BackupService, Depends(get_backups)]
 DeleteExecutor = Annotated[Executor, Depends(get_delete_executor)]

@@ -33,6 +33,8 @@ curl -fsSL https://raw.githubusercontent.com/huhengbo/iris/main/scripts/install.
    - `TZ`：定时同步按这个时区解释，填 IANA 时区名，如 `Asia/Shanghai`。
    - `APP_HTTP_PORT`：映射到宿主机的端口，默认 8080。
    - `APP_PLUGINS_DIR`：插件根目录，镜像里已由 Dockerfile 设为 `/app/plugins`，通常不用改。
+   - `APP_DEFAULT_PLUGIN_REPOS`：默认插件仓库地址，逗号分隔；不设置时是官方仓库 `https://huhengbo.github.io/iris-plugins/index.json`，设为空字符串表示不配置默认仓库。仓库地址必须是 HTTPS（本机开发可用 localhost）。
+   - `UV_DEFAULT_INDEX`：插件依赖安装使用的 PyPI 索引，默认 `https://pypi.org/simple`；国内或内网可以换成镜像地址。也可以设置 `UV_EXTRA_INDEX_URL`、`UV_INDEX_URL` 等 uv 认识的环境变量。
 2. 建好数据目录并交给容器用户（镜像里是 UID 1000，构建时用 `APP_UID`、`APP_GID` 改过的话换成对应的值）：
 
    ```sh
@@ -108,11 +110,15 @@ movie.example.com {
 | `iris.sqlite3`（以及 `-wal`、`-shm`） | 用户、资料库、资源来源、条目、播放记录、设置、在线字幕（压缩后存在数据库里） | 必须备份 |
 | `plugins/<id>/state/` | 各插件自己的密钥、配置和运行状态，格式由插件决定 | 必须备份 |
 | `plugins/<id>/.venv/`、`cache/` | 插件虚拟环境和缓存 | 不备份，由镜像和插件重建 |
+| `plugin-packages/<id>/<版本>/` | 从插件仓库或本地压缩包安装的插件代码和独立虚拟环境 | 不备份；已安装清单在数据库里，恢复后按清单重新安装 |
+| `plugin-packages/.uv-cache/` | 安装依赖时 uv 的缓存 | 不备份，可以删除 |
 | `images/` | 从 TMDB 下载的海报、剧照和头像 | 可以不备份，丢了以后刷新条目信息会重新下载 |
 
 数据库用 WAL 模式，直接复制正在使用的 `.sqlite3` 文件可能拿到不完整的数据。宿主只生成一种备份：`data/backups/iris-<时间>.tar.gz`，内含 `iris.sqlite3` 的在线快照和 `plugins/<id>/state/`，不包含 `cache/` 和插件虚拟环境。
 
 在管理后台「备份」页创建即可；创建前宿主会对运行中的插件发 `flush`，超时的插件会记警告但备份照常进行。需要离线保存时，把 `data/backups/iris-*.tar.gz` 复制到别处；旧的 `.sqlite3` 备份文件不再识别，也不能恢复。
+
+备份包里有「已安装清单」：从哪个仓库、装的什么版本。插件代码和虚拟环境不进备份包，所以**恢复后需要能访问对应仓库和 PyPI（或镜像）**：清单里存在但本地代码目录已丢失的插件，宿主会在后台重新下载、安装依赖并拉起；仓库或 PyPI 在恢复时不可用，插件会保持「缺失」状态，等下一次重启宿主时重试。本地安装的插件没有仓库可下载，需要管理员重新上传。
 
 恢复：在管理后台选择备份并确认。宿主会停止所有插件，替换主库和各插件的 `state/`，然后重启插件。恢复前的安全备份也会出现在备份列表里。备份包里有插件保存的明文凭据，要按敏感文件保管，并同时保存 `.env` 里的 `APP_SECRET_KEY`（登录和播放令牌的签名依赖它）。
 
@@ -124,6 +130,10 @@ movie.example.com {
 启动时自动执行数据库迁移，`/api/health` 里的 `schema_version` 是当前数据库版本。迁移不能回退，升级前先备份。数据库结构以基线迁移 `0001_baseline.sql` 为起点。
 
 镜像构建时会先复制 `packages/iris-plugin-sdk`，再对 `plugins/*` 分别执行 `uv sync --frozen` 生成各自的 `.venv`；运行中的宿主从 `APP_PLUGINS_DIR`（镜像里是 `/app/plugins`）发现插件，每个已启用插件在独立子进程里运行，通过 JSON-RPC 与宿主通信。插件目录不存在时构建仍可完成，表示这个镜像没有内置插件；停用或删除某个插件不影响宿主和其他插件启动。
+
+运行时镜像自带 `uv`。从插件仓库或本地压缩包安装插件时，宿主按插件自带的 `uv.lock` 导出带哈希的依赖清单，在 `data/plugin-packages/<id>/<版本>/` 里建独立 venv 并安装；**这一步需要联网访问 PyPI 或其镜像**，完全离线的环境不能安装或升级仓库插件。安装和升级在后台任务里执行，不重启宿主；升级失败会自动回滚到上一版。系统插件（`builtin.*`）随镜像发布，不能被仓库覆盖、升级或卸载。
+
+插件仓库在管理后台「插件 › 仓库」里管理：默认有一个官方仓库，可以停用但不能删除；也可以添加其他 HTTPS 仓库。添加非官方仓库需要确认风险，安装前还会展示插件申请的 `provides` / `capabilities`。每天的计划任务会拉取各仓库索引检查更新；拉取失败时保留上次缓存并显示仓库错误。
 资源来源配置保存在数据库中。本地来源的根目录只能位于数据目录下的 `media/` 之内（容器里是 `/data/media`），防止通过来源配置读取服务器上的其他文件。要用宿主机上的其他目录，把它挂载到 `media/` 下，例如在 `volumes` 里加一行 `- /mnt/movies:/data/media/movies:ro`，再到后台「资源来源」新建本地来源，服务器目录填 `movies`。本地来源只读，不支持在后台删除文件。
 
 ## 发布多架构镜像

@@ -16,6 +16,8 @@ from app.emby.middleware import install_emby_rewrite
 from app.errors import install_error_handlers, install_openapi_errors
 from app.http_middleware import install_api_timing
 from app.ops.log_buffer import install as install_log_buffer
+from app.plugins.fetch import SafeFetcher
+from app.plugins.installer import DependencyInstaller
 from app.routes import install_routes
 from app.sync.engine import Executor
 from app.sync.run import Sleeper
@@ -32,6 +34,8 @@ def create_app(
     sync_executor: Executor | None = None,
     delete_executor: Executor | None = None,
     background_tasks: bool = True,
+    plugin_installer: DependencyInstaller | None = None,
+    plugin_fetcher: SafeFetcher | None = None,
 ) -> FastAPI:
     """background_tasks 控制是否启动定时同步等后台线程，测试里关闭后手动驱动。"""
     container = build_container(
@@ -40,6 +44,8 @@ def create_app(
         sync_sleeper=sync_sleeper,
         sync_executor=sync_executor,
         delete_executor=delete_executor,
+        plugin_installer=plugin_installer,
+        plugin_fetcher=plugin_fetcher,
     )
 
     @asynccontextmanager
