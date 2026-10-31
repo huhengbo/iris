@@ -192,6 +192,10 @@ String _kindLabel(String kind) => switch (kind) {
   'batch_restore_file' => '批量恢复文件',
   'empty_recycle_bin' => '清空回收站',
   'cleanup_images' => '清理图片',
+  'plugin:install' => '安装插件',
+  'plugin:upgrade' => '升级插件',
+  'plugin:reinstall' => '重装插件',
+  'plugin:dependencies' => '安装插件依赖',
   'scheduled:backup' => '定时备份',
   'scheduled:optimize_database' => '定时优化数据库',
   'scheduled:vacuum' => '定时压缩数据库',
@@ -201,6 +205,7 @@ String _kindLabel(String kind) => switch (kind) {
   'scheduled:refresh_metadata' => '定时刷新元数据',
   'scheduled:download_subtitles' => '定时下载字幕',
   'scheduled:empty_recycle_bin' => '定时清空回收站',
+  'scheduled:check_plugin_updates' => '定时检查插件更新',
   _ => kind,
 };
 
@@ -216,6 +221,11 @@ String _phaseLabel(String phase) => switch (phase) {
   'deleting_cloud' => '删除来源文件',
   'placing' => '更新文件信息',
   'scraping' => '获取元数据',
+  'download' => '下载中',
+  'verify' => '校验中',
+  'extract' => '解压中',
+  'dependencies' => '安装依赖中',
+  'start' => '启动中',
   _ => '处理中',
 };
 

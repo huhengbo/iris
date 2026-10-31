@@ -13,7 +13,10 @@ import '../../core/widgets/notice.dart';
 import '../../core/widgets/snack.dart';
 import 'plugin_bridge.dart';
 import 'plugin_frame/plugin_frame.dart';
+import 'plugin_task_dialog.dart';
+import 'plugin_uninstall_dialog.dart';
 import 'plugins_api.dart';
+import 'resources_api.dart';
 import 'settings_api.dart';
 
 /// 插件详情：基本信息、启停，以及插件自己提供的页面。
@@ -71,6 +74,60 @@ class _PluginDetailPageState extends ConsumerState<PluginDetailPage>
     }
   }
 
+  Future<void> _upgrade(AdminPlugin plugin) async {
+    if (plugin.availableVersion == null) return;
+    setState(() => _busy = true);
+    try {
+      final taskId = await upgradePlugin(
+        ref.read(apiClientProvider),
+        plugin.id,
+        version: plugin.availableVersion!,
+        acceptPermissions: true,
+      );
+      if (!mounted) return;
+      final ok = await showPluginTaskProgressDialog(
+        context,
+        ref: ref,
+        taskId: taskId,
+        title: '升级「${plugin.name}」',
+      );
+      if (ok && mounted) {
+        ref.invalidate(pluginsProvider);
+        showSnack(context, '插件${plugin.name}升级成功');
+      }
+    } catch (error) {
+      if (mounted) showApiErrorSnack(context, error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _uninstall(AdminPlugin plugin) async {
+    final deleteData = await showPluginUninstallConfirmDialog(
+      context,
+      pluginName: plugin.name,
+    );
+    if (deleteData == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await uninstallPlugin(
+        ref.read(apiClientProvider),
+        plugin.id,
+        deleteData: deleteData,
+      );
+      ref
+        ..invalidate(pluginsProvider)
+        ..invalidate(resourceSourcesProvider);
+      if (!mounted) return;
+      showSnack(context, '插件已卸载');
+      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted) showApiErrorSnack(context, error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _remove(AdminPlugin plugin) async {
     final confirmed = await showConfirmDialog(
       context,
@@ -118,6 +175,8 @@ class _PluginDetailPageState extends ConsumerState<PluginDetailPage>
                     busy: _busy,
                     onToggle: () => _toggle(plugin),
                     onRetry: () => _retry(plugin),
+                    onUpgrade: () => _upgrade(plugin),
+                    onUninstall: () => _uninstall(plugin),
                     onRemove: () => _remove(plugin),
                   ),
                   TabBar(
@@ -165,6 +224,8 @@ class _PluginHeader extends StatelessWidget {
     required this.busy,
     required this.onToggle,
     required this.onRetry,
+    required this.onUpgrade,
+    required this.onUninstall,
     required this.onRemove,
   });
 
@@ -172,14 +233,25 @@ class _PluginHeader extends StatelessWidget {
   final bool busy;
   final VoidCallback onToggle;
   final VoidCallback onRetry;
+  final VoidCallback onUpgrade;
+  final VoidCallback onUninstall;
   final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final isSystem = plugin.source == PluginSource.system || plugin.builtIn;
+    final sourceLabel = switch (plugin.source) {
+      PluginSource.system => '系统内置',
+      PluginSource.repository =>
+        plugin.repositoryName?.isNotEmpty == true
+            ? '第三方 · 来源：${plugin.repositoryName}'
+            : '第三方仓库',
+      PluginSource.local => '第三方 · 本地安装',
+    };
     final details = [
       'v${plugin.version}',
-      plugin.builtIn ? '内置' : '第三方',
+      plugin.builtIn ? '内置' : sourceLabel,
       if (plugin.provides.isNotEmpty) '提供 ${plugin.provides.join('、')}',
       if (plugin.requires.isNotEmpty) '使用 ${plugin.requires.join('、')}',
     ];
@@ -213,6 +285,25 @@ class _PluginHeader extends StatelessWidget {
                 ),
             ],
           ),
+          if (plugin.availableVersion != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.upgrade, color: CinemaColors.amber, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '有新版本可用：v${plugin.availableVersion}',
+                    style: text.bodySmall?.copyWith(color: CinemaColors.amber),
+                  ),
+                ),
+                FilledButton.tonal(
+                  onPressed: busy ? null : onUpgrade,
+                  child: const Text('升级'),
+                ),
+              ],
+            ),
+          ],
           if (plugin.state == PluginState.failed)
             Row(
               children: [
@@ -242,6 +333,19 @@ class _PluginHeader extends StatelessWidget {
                   child: const Text('移除记录'),
                 ),
               ],
+            ),
+          if (!isSystem && plugin.state != PluginState.notInstalled)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: CinemaColors.error,
+                  padding: EdgeInsets.zero,
+                ),
+                onPressed: busy ? null : onUninstall,
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: const Text('卸载插件'),
+              ),
             ),
         ],
       ),

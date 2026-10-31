@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:iris/core/api/api_error.dart';
 import 'package:iris/features/admin/catalog_api.dart';
 import 'package:iris/features/admin/libraries_api.dart';
+import 'package:iris/features/admin/plugin_catalog_api.dart';
+import 'package:iris/features/admin/plugins_api.dart';
 import 'package:iris/features/admin/tasks_api.dart';
 import 'package:iris/features/auth/auth_controller.dart';
 import 'package:iris/features/library/browse_api.dart';
@@ -73,7 +75,10 @@ Object? _sample(String name, Map<String, dynamic> property) {
     'string' => name.endsWith('_at') ? '2026-10-03T10:00:00Z' : 'x',
     'array' => <Object?>[],
     'object' => <String, dynamic>{},
-    _ => <Object?>[], // $ref 数组之外的引用此处都是列表
+    _ => switch (property[r'$ref']) {
+      final String ref => _minimalBody(ref.split('/').last),
+      _ => <Object?>[], // 其余引用都是列表
+    },
   };
 }
 
@@ -87,7 +92,11 @@ Set<String> _parse(
   return body.reads;
 }
 
-void _expectClientFieldsDeclared(String schemaName, Set<String> reads) {
+void _expectClientFieldsDeclared(
+  String schemaName,
+  Set<String> reads, {
+  Set<String> nullSafeOptional = const {},
+}) {
   final schema = _schema(schemaName);
   final declared = (schema['properties'] as Map<String, dynamic>).keys.toSet();
   final required = (schema['required'] as List<dynamic>).cast<String>().toSet();
@@ -99,7 +108,7 @@ void _expectClientFieldsDeclared(String schemaName, Set<String> reads) {
   );
   // 客户端没有兜底的字段，必须是服务端承诺一定返回的
   expect(
-    reads.difference(required),
+    reads.difference(required).difference(nullSafeOptional),
     isEmpty,
     reason: '客户端依赖了快照里可缺省的 $schemaName 字段',
   );
@@ -123,6 +132,48 @@ DioException _http(int status, Object? body, {Map<String, String>? headers}) {
 
 void main() {
   group('client models only depend on fields the snapshot declares', () {
+    test('PluginOut -> AdminPlugin', () {
+      final reads = _parse('PluginOut', AdminPlugin.fromJson);
+      _expectClientFieldsDeclared('PluginOut', reads);
+      expect(
+        reads,
+        containsAll(['id', 'state', 'source', 'available_version']),
+      );
+    });
+
+    test('RepositoryOut -> PluginRepository', () {
+      final reads = _parse('RepositoryOut', PluginRepository.fromJson);
+      // schema 只在索引已解析时才有值，客户端按可空读取
+      _expectClientFieldsDeclared(
+        'RepositoryOut',
+        reads,
+        nullSafeOptional: {'schema'},
+      );
+      expect(reads, containsAll(['id', 'url', 'official', 'status']));
+    });
+
+    test('CatalogPluginOut -> CatalogPlugin', () {
+      final reads = _parse('CatalogPluginOut', CatalogPlugin.fromJson);
+      _expectClientFieldsDeclared('CatalogPluginOut', reads);
+      expect(reads, containsAll(['id', 'version', 'status', 'capabilities']));
+    });
+
+    test('CatalogOut -> PluginCatalog', () {
+      final reads = _parse('CatalogOut', PluginCatalog.fromJson);
+      _expectClientFieldsDeclared('CatalogOut', reads);
+    });
+
+    test('UploadOut -> PluginUpload', () {
+      final reads = _parse('UploadOut', PluginUpload.fromJson);
+      _expectClientFieldsDeclared('UploadOut', reads);
+      expect(reads, containsAll(['upload_id', 'sha256', 'action']));
+    });
+
+    test('UploadManifestOut -> PluginUploadManifest', () {
+      final reads = _parse('UploadManifestOut', PluginUploadManifest.fromJson);
+      _expectClientFieldsDeclared('UploadManifestOut', reads);
+    });
+
     test('TaskOut -> AdminTask', () {
       final reads = _parse('TaskOut', AdminTask.fromJson);
       _expectClientFieldsDeclared('TaskOut', reads);

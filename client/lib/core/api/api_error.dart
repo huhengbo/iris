@@ -55,10 +55,15 @@ class ApiError implements Exception {
     }
     if (statusCode == 409 ||
         code.endsWith('_conflict') ||
+        code.endsWith('_in_use') ||
+        code.endsWith('_running') ||
         code == 'sync_running') {
       return ApiErrorKind.conflict;
     }
-    if (statusCode == 400 || statusCode == 422 || code == 'validation_error') {
+    if (statusCode == 400 ||
+        statusCode == 422 ||
+        code == 'validation_error' ||
+        code.startsWith('package_')) {
       return ApiErrorKind.validation;
     }
     if (statusCode != null && statusCode! >= 500) return ApiErrorKind.server;

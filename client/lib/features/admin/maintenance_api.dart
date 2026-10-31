@@ -230,6 +230,7 @@ String scheduledTaskLabel(String key) => switch (key) {
   'refresh_metadata' => '刷新元数据',
   'download_subtitles' => '下载字幕',
   'empty_recycle_bin' => '清空回收站',
+  'check_plugin_updates' => '检查插件更新',
   _ => key,
 };
 

@@ -13,6 +13,7 @@ import '../features/admin/library_advanced_page.dart';
 import '../features/admin/library_recommendations_page.dart';
 import '../features/admin/logs_page.dart';
 import '../features/admin/plugin_detail_page.dart';
+import '../features/admin/plugin_repositories_page.dart';
 import '../features/admin/resource_source_detail_page.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/auth/login_page.dart';
@@ -110,6 +111,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             sourceId: int.parse(state.pathParameters['id']!),
           ),
         ),
+      ),
+      GoRoute(
+        path: '/settings/manage/plugin-repositories',
+        builder: (_, _) => const _Sides(PluginRepositoriesPage()),
       ),
       GoRoute(
         path: '/settings/manage/plugins/:id',

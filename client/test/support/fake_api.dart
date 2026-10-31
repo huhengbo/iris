@@ -47,10 +47,19 @@ class FakeAdminApi implements HttpClientAdapter {
         await requestStream.expand((c) => c).toList(),
         allowMalformed: true,
       );
-      // multipart 上传不是 JSON，原样记下文本
-      body = (options.contentType ?? '').startsWith('multipart/')
-          ? raw
-          : jsonDecode(raw);
+      // multipart 或二进制上传不是 JSON，原样记下文本
+      final ct = options.contentType ?? '';
+      if (ct.startsWith('multipart/') ||
+          ct.startsWith('application/zip') ||
+          ct.startsWith('application/octet-stream')) {
+        body = raw;
+      } else {
+        try {
+          body = jsonDecode(raw);
+        } catch (_) {
+          body = raw;
+        }
+      }
       bodies[route] = body;
     }
     final handler = routes[route];

@@ -15,6 +15,7 @@ class AdminTask {
     required this.progressTotal,
     required this.cancelRequested,
     this.error,
+    this.result,
     required this.startedAt,
     this.finishedAt,
   });
@@ -28,6 +29,7 @@ class AdminTask {
     progressTotal: json['progress_total'] as int,
     cancelRequested: json['cancel_requested'] as bool,
     error: json['error'] as String?,
+    result: json['result'] as Map<String, dynamic>?,
     startedAt: DateTime.parse(json['started_at'] as String).toLocal(),
     finishedAt: json['finished_at'] == null
         ? null
@@ -42,6 +44,7 @@ class AdminTask {
   final int progressTotal;
   final bool cancelRequested;
   final String? error;
+  final Map<String, dynamic>? result;
   final DateTime startedAt;
   final DateTime? finishedAt;
 

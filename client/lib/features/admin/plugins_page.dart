@@ -12,10 +12,15 @@ import '../../core/widgets/section_title.dart';
 import '../../core/widgets/snack.dart';
 import 'admin_widgets.dart';
 import 'busy_icon.dart';
+import 'plugin_catalog_api.dart';
+import 'plugin_catalog_tab.dart';
+import 'plugin_task_dialog.dart';
+import 'plugin_uninstall_dialog.dart';
+import 'plugin_upload.dart';
 import 'plugins_api.dart';
 import 'resources_api.dart';
 
-/// 插件中心：按分类分组的卡片，操作都收在卡片右上角的菜单里。
+/// 插件中心：包含「我的插件」和「目录」两个标签页，支持管理、升级、卸载、仓库配置与本地安装。
 class PluginsPage extends ConsumerStatefulWidget {
   const PluginsPage({super.key});
 
@@ -32,7 +37,6 @@ class _PluginsPageState extends ConsumerState<PluginsPage> {
     List<ResourceSourceInfo> sources,
   ) async {
     if (!enabled && sources.isNotEmpty) {
-      // 停用资源插件会让它的来源整体不可用，先说清楚影响哪些来源
       final folders = sources.fold(0, (sum, s) => sum + s.folderCount);
       final confirmed = await showConfirmDialog(
         context,
@@ -52,6 +56,59 @@ class _PluginsPageState extends ConsumerState<PluginsPage> {
       ref
         ..invalidate(pluginsProvider)
         ..invalidate(resourceSourcesProvider);
+    } catch (error) {
+      if (mounted) showApiErrorSnack(context, error);
+    } finally {
+      if (mounted) setState(() => _busy.remove(plugin.id));
+    }
+  }
+
+  Future<void> _upgrade(AdminPlugin plugin) async {
+    if (plugin.availableVersion == null) return;
+    setState(() => _busy.add(plugin.id));
+    try {
+      final taskId = await upgradePlugin(
+        ref.read(apiClientProvider),
+        plugin.id,
+        version: plugin.availableVersion!,
+        acceptPermissions: true,
+      );
+      if (!mounted) return;
+      final ok = await showPluginTaskProgressDialog(
+        context,
+        ref: ref,
+        taskId: taskId,
+        title: '升级「${plugin.name}」',
+      );
+      if (ok && mounted) {
+        ref.invalidate(pluginsProvider);
+        showSnack(context, '插件${plugin.name}升级成功');
+      }
+    } catch (error) {
+      if (mounted) showApiErrorSnack(context, error);
+    } finally {
+      if (mounted) setState(() => _busy.remove(plugin.id));
+    }
+  }
+
+  Future<void> _uninstall(AdminPlugin plugin) async {
+    final deleteData = await showPluginUninstallConfirmDialog(
+      context,
+      pluginName: plugin.name,
+    );
+    if (deleteData == null || !mounted) return;
+
+    setState(() => _busy.add(plugin.id));
+    try {
+      await uninstallPlugin(
+        ref.read(apiClientProvider),
+        plugin.id,
+        deleteData: deleteData,
+      );
+      ref
+        ..invalidate(pluginsProvider)
+        ..invalidate(resourceSourcesProvider);
+      if (mounted) showSnack(context, '插件已卸载');
     } catch (error) {
       if (mounted) showApiErrorSnack(context, error);
     } finally {
@@ -81,6 +138,80 @@ class _PluginsPageState extends ConsumerState<PluginsPage> {
 
   @override
   Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('插件中心'),
+          actions: [
+            TextButton.icon(
+              onPressed: () => pickAndInstallLocalPlugin(context, ref),
+              icon: const Icon(Icons.file_upload_outlined, size: 18),
+              label: const Text('本地安装'),
+            ),
+            TextButton.icon(
+              onPressed: () =>
+                  context.push('/settings/manage/plugin-repositories'),
+              icon: const Icon(Icons.source_outlined, size: 18),
+              label: const Text('仓库'),
+            ),
+            IconButton(
+              tooltip: '刷新',
+              onPressed: () {
+                ref
+                  ..invalidate(pluginsProvider)
+                  ..invalidate(pluginCatalogProvider);
+              },
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+          bottom: const TabBar(
+            labelColor: CinemaColors.amber,
+            unselectedLabelColor: CinemaColors.text2,
+            indicatorColor: CinemaColors.amber,
+            dividerColor: CinemaColors.line,
+            tabs: [
+              Tab(text: '我的插件'),
+              Tab(text: '目录'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _MyPluginsView(
+              busy: _busy,
+              onToggle: (plugin, sources) =>
+                  _setEnabled(plugin, !plugin.enabled, sources),
+              onUpgrade: _upgrade,
+              onUninstall: _uninstall,
+              onRemove: _remove,
+            ),
+            const PluginCatalogTab(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MyPluginsView extends ConsumerWidget {
+  const _MyPluginsView({
+    required this.busy,
+    required this.onToggle,
+    required this.onUpgrade,
+    required this.onUninstall,
+    required this.onRemove,
+  });
+
+  final Set<String> busy;
+  final void Function(AdminPlugin plugin, List<ResourceSourceInfo> sources)
+  onToggle;
+  final ValueChanged<AdminPlugin> onUpgrade;
+  final ValueChanged<AdminPlugin> onUninstall;
+  final ValueChanged<AdminPlugin> onRemove;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final sources =
         ref.watch(resourceSourcesProvider).value ??
         const <ResourceSourceInfo>[];
@@ -88,61 +219,48 @@ class _PluginsPageState extends ConsumerState<PluginsPage> {
       for (final source in sources)
         if (source.pluginId == plugin.id) source,
     ];
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('插件中心'),
-        actions: [
-          IconButton(
-            tooltip: '刷新',
-            onPressed: () => ref.invalidate(pluginsProvider),
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: AsyncView(
-        value: ref.watch(pluginsProvider),
-        onRetry: () => ref.invalidate(pluginsProvider),
-        builder: (plugins) {
-          if (plugins.isEmpty) {
-            return const EmptyState(
-              icon: Icons.extension_outlined,
-              title: '还没有插件',
-              message: '把插件放进服务端的插件目录后重启，它们会出现在这里。',
-            );
-          }
-          return AdminListWidth(
-            top: 8,
-            bottom: 32,
-            maxWidth: adminGridWidth,
-            builder: (padding) => ListView(
-              padding:
-                  padding +
-                  const EdgeInsets.symmetric(horizontal: CinemaSpacing.gutter),
-              children: [
-                for (final category in PluginCategory.values)
-                  if (plugins.any((plugin) => plugin.category == category))
-                    _PluginGroup(
-                      category: category,
-                      plugins: [
-                        for (final plugin in plugins)
-                          if (plugin.category == category) plugin,
-                      ],
-                      first: category == PluginCategory.values.first,
-                      busy: _busy,
-                      onOpen: (plugin) =>
-                          context.push('/settings/manage/plugins/${plugin.id}'),
-                      onToggle: (plugin) => _setEnabled(
-                        plugin,
-                        !plugin.enabled,
-                        sourcesOf(plugin),
-                      ),
-                      onRemove: _remove,
-                    ),
-              ],
-            ),
+
+    return AsyncView(
+      value: ref.watch(pluginsProvider),
+      onRetry: () => ref.invalidate(pluginsProvider),
+      builder: (plugins) {
+        if (plugins.isEmpty) {
+          return const EmptyState(
+            icon: Icons.extension_outlined,
+            title: '还没有插件',
+            message: '把插件放进服务端的插件目录后重启，它们会出现在这里。',
           );
-        },
-      ),
+        }
+        return AdminListWidth(
+          top: 8,
+          bottom: 32,
+          maxWidth: adminGridWidth,
+          builder: (padding) => ListView(
+            padding:
+                padding +
+                const EdgeInsets.symmetric(horizontal: CinemaSpacing.gutter),
+            children: [
+              for (final category in PluginCategory.values)
+                if (plugins.any((plugin) => plugin.category == category))
+                  _PluginGroup(
+                    category: category,
+                    plugins: [
+                      for (final plugin in plugins)
+                        if (plugin.category == category) plugin,
+                    ],
+                    first: category == PluginCategory.values.first,
+                    busy: busy,
+                    onOpen: (plugin) =>
+                        context.push('/settings/manage/plugins/${plugin.id}'),
+                    onToggle: (plugin) => onToggle(plugin, sourcesOf(plugin)),
+                    onUpgrade: onUpgrade,
+                    onUninstall: onUninstall,
+                    onRemove: onRemove,
+                  ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -156,6 +274,8 @@ class _PluginGroup extends StatelessWidget {
     required this.busy,
     required this.onOpen,
     required this.onToggle,
+    required this.onUpgrade,
+    required this.onUninstall,
     required this.onRemove,
   });
 
@@ -165,6 +285,8 @@ class _PluginGroup extends StatelessWidget {
   final Set<String> busy;
   final ValueChanged<AdminPlugin> onOpen;
   final ValueChanged<AdminPlugin> onToggle;
+  final ValueChanged<AdminPlugin> onUpgrade;
+  final ValueChanged<AdminPlugin> onUninstall;
   final ValueChanged<AdminPlugin> onRemove;
 
   @override
@@ -180,7 +302,6 @@ class _PluginGroup extends StatelessWidget {
                 : constraints.maxWidth >= 560
                 ? 2
                 : 1;
-            // TV 的字号更大，卡片按文字缩放留出余量，避免简介被挤出去
             final extra = MediaQuery.textScalerOf(context).scale(1) - 1;
             return GridView.builder(
               shrinkWrap: true,
@@ -189,7 +310,7 @@ class _PluginGroup extends StatelessWidget {
                 crossAxisCount: columns,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                mainAxisExtent: 204.0 + extra.clamp(0, 0.4).toDouble() * 70,
+                mainAxisExtent: 220.0 + extra.clamp(0, 0.4).toDouble() * 70,
               ),
               itemCount: plugins.length,
               itemBuilder: (context, index) {
@@ -199,6 +320,8 @@ class _PluginGroup extends StatelessWidget {
                   busy: busy.contains(plugin.id),
                   onOpen: () => onOpen(plugin),
                   onToggle: () => onToggle(plugin),
+                  onUpgrade: () => onUpgrade(plugin),
+                  onUninstall: () => onUninstall(plugin),
                   onRemove: () => onRemove(plugin),
                 );
               },
@@ -210,7 +333,7 @@ class _PluginGroup extends StatelessWidget {
   }
 }
 
-enum _PluginAction { settings, toggle, remove }
+enum _PluginAction { settings, toggle, upgrade, uninstall, remove }
 
 class _PluginCard extends StatelessWidget {
   const _PluginCard({
@@ -218,6 +341,8 @@ class _PluginCard extends StatelessWidget {
     required this.busy,
     required this.onOpen,
     required this.onToggle,
+    required this.onUpgrade,
+    required this.onUninstall,
     required this.onRemove,
   });
 
@@ -225,18 +350,31 @@ class _PluginCard extends StatelessWidget {
   final bool busy;
   final VoidCallback onOpen;
   final VoidCallback onToggle;
+  final VoidCallback onUpgrade;
+  final VoidCallback onUninstall;
   final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final canToggle = plugin.state != PluginState.notInstalled;
+    final isSystem = plugin.source == PluginSource.system || plugin.builtIn;
     final color = switch (plugin.state) {
       PluginState.failed => CinemaColors.error,
       PluginState.notInstalled => CinemaColors.text2,
       PluginState.stopped => CinemaColors.text2,
       PluginState.running => CinemaColors.amber,
     };
+
+    final sourceLabel = switch (plugin.source) {
+      PluginSource.system => '系统',
+      PluginSource.repository =>
+        plugin.repositoryName?.isNotEmpty == true
+            ? plugin.repositoryName!
+            : '仓库',
+      PluginSource.local => '本地',
+    };
+
     return FocusRing(
       child: Card(
         margin: EdgeInsets.zero,
@@ -280,6 +418,10 @@ class _PluginCard extends StatelessWidget {
                               onOpen();
                             case _PluginAction.toggle:
                               onToggle();
+                            case _PluginAction.upgrade:
+                              onUpgrade();
+                            case _PluginAction.uninstall:
+                              onUninstall();
                             case _PluginAction.remove:
                               onRemove();
                           }
@@ -293,6 +435,16 @@ class _PluginCard extends StatelessWidget {
                             PopupMenuItem(
                               value: _PluginAction.toggle,
                               child: Text(plugin.enabled ? '停用' : '启用'),
+                            ),
+                          if (!isSystem && plugin.availableVersion != null)
+                            const PopupMenuItem(
+                              value: _PluginAction.upgrade,
+                              child: Text('升级'),
+                            ),
+                          if (!isSystem)
+                            const PopupMenuItem(
+                              value: _PluginAction.uninstall,
+                              child: Text('卸载'),
                             ),
                           if (plugin.state == PluginState.notInstalled)
                             const PopupMenuItem(
@@ -330,9 +482,47 @@ class _PluginCard extends StatelessWidget {
                 else
                   const Spacer(),
                 const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: _StateBadge(plugin.state),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    _StateBadge(plugin.state),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: CinemaColors.surface3,
+                        borderRadius: BorderRadius.circular(CinemaRadius.pill),
+                      ),
+                      child: Text(
+                        sourceLabel,
+                        style: text.labelSmall?.copyWith(
+                          color: CinemaColors.text2,
+                        ),
+                      ),
+                    ),
+                    if (plugin.availableVersion != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: CinemaColors.amber.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(
+                            CinemaRadius.pill,
+                          ),
+                        ),
+                        child: Text(
+                          '有更新',
+                          style: text.labelSmall?.copyWith(
+                            color: CinemaColors.amber,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -352,7 +542,7 @@ class _StateBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final failed = state == PluginState.failed;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: failed
             ? CinemaColors.error.withValues(alpha: 0.12)

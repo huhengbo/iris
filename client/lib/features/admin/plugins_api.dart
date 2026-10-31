@@ -69,6 +69,25 @@ enum PluginState {
   final String label;
 }
 
+/// 插件来源
+enum PluginSource {
+  system('系统'),
+  repository('仓库'),
+  local('本地');
+
+  const PluginSource(this.label);
+
+  factory PluginSource.fromJson(String? value, {bool builtIn = false}) =>
+      switch (value) {
+        'system' => PluginSource.system,
+        'repository' => PluginSource.repository,
+        'local' => PluginSource.local,
+        _ => builtIn ? PluginSource.system : PluginSource.local,
+      };
+
+  final String label;
+}
+
 class AdminPlugin {
   const AdminPlugin({
     required this.id,
@@ -82,6 +101,12 @@ class AdminPlugin {
     required this.enabled,
     required this.state,
     required this.updatedAt,
+    this.source = PluginSource.system,
+    this.repositoryId,
+    this.repositoryName,
+    this.availableVersion,
+    this.packageStatus,
+    this.packageError,
     this.description = '',
     this.category = PluginCategory.other,
     this.proxyMode = PluginProxyMode.inherit,
@@ -89,31 +114,43 @@ class AdminPlugin {
     this.pages = const [],
   });
 
-  factory AdminPlugin.fromJson(Map<String, dynamic> json) => AdminPlugin(
-    id: json['id'] as String,
-    name: json['name'] as String,
-    version: json['version'] as String,
-    sdkVersion: json['sdk_version'] as String,
-    provides: [
-      for (final item in json['provides'] as List<dynamic>) item as String,
-    ],
-    requires: [
-      for (final item in json['requires'] as List<dynamic>) item as String,
-    ],
-    trust: json['trust'] as String,
-    builtIn: json['built_in'] as bool,
-    enabled: json['enabled'] as bool,
-    state: PluginState.fromJson(json['state'] as String),
-    updatedAt: DateTime.parse(json['updated_at'] as String).toLocal(),
-    description: json['description'] as String? ?? '',
-    category: PluginCategory.fromJson(json['category'] as String?),
-    proxyMode: PluginProxyMode.fromJson(json['proxy_mode'] as String?),
-    proxy: json['proxy'] as String?,
-    pages: [
-      for (final item in json['pages'] as List<dynamic>? ?? const [])
-        PluginPageInfo.fromJson(item as Map<String, dynamic>),
-    ],
-  );
+  factory AdminPlugin.fromJson(Map<String, dynamic> json) {
+    final builtIn = json['built_in'] as bool? ?? false;
+    return AdminPlugin(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      version: json['version'] as String,
+      sdkVersion: json['sdk_version'] as String,
+      provides: [
+        for (final item in json['provides'] as List<dynamic>) item as String,
+      ],
+      requires: [
+        for (final item in json['requires'] as List<dynamic>) item as String,
+      ],
+      trust: json['trust'] as String,
+      builtIn: builtIn,
+      enabled: json['enabled'] as bool,
+      state: PluginState.fromJson(json['state'] as String),
+      updatedAt: DateTime.parse(json['updated_at'] as String).toLocal(),
+      source: PluginSource.fromJson(
+        json['source'] as String?,
+        builtIn: builtIn,
+      ),
+      repositoryId: json['repository_id'] as int?,
+      repositoryName: json['repository_name'] as String?,
+      availableVersion: json['available_version'] as String?,
+      packageStatus: json['package_status'] as String?,
+      packageError: json['package_error'] as String?,
+      description: json['description'] as String? ?? '',
+      category: PluginCategory.fromJson(json['category'] as String?),
+      proxyMode: PluginProxyMode.fromJson(json['proxy_mode'] as String?),
+      proxy: json['proxy'] as String?,
+      pages: [
+        for (final item in json['pages'] as List<dynamic>? ?? const [])
+          PluginPageInfo.fromJson(item as Map<String, dynamic>),
+      ],
+    );
+  }
 
   final String id;
   final String name;
@@ -126,6 +163,12 @@ class AdminPlugin {
   final bool enabled;
   final PluginState state;
   final DateTime updatedAt;
+  final PluginSource source;
+  final int? repositoryId;
+  final String? repositoryName;
+  final String? availableVersion;
+  final String? packageStatus;
+  final String? packageError;
 
   /// 一句话介绍，可能为空
   final String description;
@@ -214,6 +257,32 @@ Future<AdminPlugin> setPluginProxy(
 
 Future<void> deletePlugin(Dio dio, String pluginId) async {
   await dio.delete<void>('/api/admin/plugins/$pluginId');
+}
+
+/// 卸载插件，[deleteData] 为 true 时同时删除插件数据与配置
+Future<void> uninstallPlugin(
+  Dio dio,
+  String pluginId, {
+  bool deleteData = false,
+}) async {
+  await dio.post<void>(
+    '/api/admin/plugins/$pluginId/uninstall',
+    data: {'delete_data': deleteData},
+  );
+}
+
+/// 升级插件至指定版本，返回后台任务 ID
+Future<int> upgradePlugin(
+  Dio dio,
+  String pluginId, {
+  required String version,
+  bool acceptPermissions = true,
+}) async {
+  final response = await dio.post<Map<String, dynamic>>(
+    '/api/admin/plugins/$pluginId/upgrade',
+    data: {'version': version, 'accept_permissions': acceptPermissions},
+  );
+  return response.data!['task_id'] as int;
 }
 
 Future<PluginSession> createPluginSession(Dio dio, String pluginId) async {
