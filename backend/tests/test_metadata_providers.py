@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from iris_plugin_sdk import MetadataRecord
+from iris_plugin_sdk import MetadataNotFound, MetadataRecord
 
 from app.config import AppConfig
 from tests.conftest import FakeClock, SyncRunner, cloud115_roots, make_app
@@ -152,6 +152,21 @@ def test_unready_plugin_only_holds_its_own_library(
 
     plugin.provider.reason = None
     assert sync(client, admin)["stats"]["matched"] == 1
+
+
+def test_search_not_found_leaves_work_unmatched_without_failing_sync(
+    client: TestClient, admin: dict[str, str], cloud115: FakeCloud115, configured_plugin: Any
+) -> None:
+    # MetaTube 这类插件搜不到时回 404：只是这一部没有结果，不能让整次同步失败
+    configured_plugin.provider.error = MetadataNotFound("info not found")
+    movie_library(client, cloud115, PLUGIN_ID)
+
+    body = sync(client, admin)
+
+    assert body["status"] == "succeeded", body
+    assert body["stats"]["matched"] == 0
+    assert body["stats"]["unmatched"] == 1
+    assert body["stats"]["waiting"] == 0
 
 
 def test_library_metadata_provider_is_validated(

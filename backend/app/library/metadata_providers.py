@@ -146,7 +146,11 @@ class BoundProvider:
         self, kind: MetadataKind, query: str, priority: Priority, year: int | None = None
     ) -> list[MetadataCandidate]:
         request = MetadataSearchRequest(title=query, year=year, kind=kind)
-        results = self._call(priority, lambda: self._provider.search(request))
+        try:
+            results = self._call(priority, lambda: self._provider.search(request))
+        except MetadataNotFound:
+            # 有的插件（MetaTube）搜不到时回 404，对搜索来说就是没有结果，不能让同步中止
+            return []
         # 候选必须属于这个插件，插件填错时以宿主为准
         return [r for r in results if r.provider_id == self.id and r.remote_id]
 

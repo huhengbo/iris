@@ -10,6 +10,7 @@ from pathlib import Path
 
 from iris_plugin_sdk import (
     ImageLookupRequest,
+    MetadataNotFound,
     MetadataRecord,
     MetadataUnavailable,
     RemoteImage,
@@ -133,6 +134,8 @@ class MetadataControl:
             mode = None
         elif isinstance(value, MetadataUnavailable):
             mode = "unavailable"
+        elif isinstance(value, MetadataNotFound):
+            mode = "not_found"
         else:
             raise TypeError(f"不支持的假元数据错误：{value!r}")
         self._control.call("metadata", "set_error", {"error": mode})
