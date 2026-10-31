@@ -253,8 +253,23 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       _buffering = true;
       _subtitlesLoaded = false;
     });
+    await _tuneSeeking();
     await _player.open(Media(widget.args.url, start: start));
     if (_rate != 1) await _player.setRate(_rate);
+  }
+
+  /// mpv 默认的绝对跳转是精确跳转：先退回上一个关键帧，再解码到目标位置。网络来源（115 直链）
+  /// 要把这一段全部下载下来，关键帧稀疏的高码率片源跳一次要等很久。改成直接落在关键帧上，
+  /// 偏差在一个关键帧间隔内，和 Emby 系客户端的跳转行为一致。
+  Future<void> _tuneSeeking() async {
+    final platform = _player.platform;
+    if (platform is! NativePlayer) return;
+    try {
+      // Web 的 NativePlayer stub 没有该原生方法；上面的类型保护保证这里只在 App 执行。
+      await (platform as dynamic).setProperty('hr-seek', 'no');
+    } on Object {
+      // 调不了就保持默认跳转，不影响播放
+    }
   }
 
   /// 文件加载后才能挂外挂字幕。倒序挂，最后选中的是第一条（默认字幕）。
