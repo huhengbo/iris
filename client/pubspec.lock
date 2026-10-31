@@ -202,13 +202,13 @@ packages:
     source: hosted
     version: "1.1.0"
   file_selector_android:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       name: file_selector_android
-      sha256: d670cd0ce77a2e785b18d8b4d0a8d6a222d6a813ec9b7ddf2790a1b4fb6fa92c
+      sha256: "1ce58b609289551f8ec07265476720e77d19764339cc1d8e4df3c4d34dac6499"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.2+11"
+    version: "0.5.1+17"
   file_selector_ios:
     dependency: transitive
     description:
