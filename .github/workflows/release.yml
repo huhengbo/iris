@@ -12,6 +12,9 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Check version
+        run: uv run --python 3.13 scripts/version.py check "$GITHUB_REF_NAME"
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -43,6 +46,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Check version
+        run: uv run --python 3.13 scripts/version.py check "$GITHUB_REF_NAME"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -73,11 +79,19 @@ jobs:
           } > secrets/android/key.properties
       - run: flutter pub get
         working-directory: client
-      - run: flutter build apk --release --split-per-abi
+      # 版本号取自根目录 VERSION（上面已校验与 tag、pubspec 一致）；versionCode = x*10000 + y*100 + z
+      - name: Build APK
+        run: |
+          flutter build apk --release --split-per-abi \
+            --build-name="$(cat ../VERSION)" \
+            --build-number="$(uv run --python 3.13 ../scripts/version.py code)"
         working-directory: client
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --generate-notes \
+          uv run --python 3.13 scripts/version.py notes > release-notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --title "光圈 $GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
             client/build/app/outputs/flutter-apk/app-*-release.apk

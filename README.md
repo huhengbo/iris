@@ -1,5 +1,8 @@
 # 光圈 / Iris
 
+[![CI](https://github.com/huhengbo/iris/actions/workflows/ci.yml/badge.svg)](https://github.com/huhengbo/iris/actions/workflows/ci.yml)
+[![Release](https://github.com/huhengbo/iris/actions/workflows/release.yml/badge.svg)](https://github.com/huhengbo/iris/actions/workflows/release.yml)
+
 自托管的影视库：把分散在网盘或本地目录里的电影和剧集整理成影视墙，给自己和家人朋友在手机、电视和浏览器上看。
 
 - **资源来源插件化**：片源通过 `resource.source` 插件接入，内置 115 网盘和本地存储两种，核心不依赖任何一个网盘。插件在独立子进程里运行，可以单独开发、安装和移除。
@@ -14,6 +17,19 @@
 - **WebDAV**：用同一个账号在 Infuse 等播放器里以 WebDAV 方式浏览片库，只读，可见范围同样按资料库分配。
 - **多用户**：账号由管理员创建，普通用户只能看到分配给自己的资料库。
 - **插件**：资源来源、元数据（TMDB、豆瓣）、图片（Fanart.tv）、在线字幕（assrt）都是插件，内置在 `plugins/`。
+
+> [!IMPORTANT]
+> 本项目只提供影视库管理和播放工具，不提供、托管或分发任何媒体内容。请确认你的使用方式符合所在地区法律法规，以及网盘等第三方服务的使用条款。
+
+## 技术栈
+
+| 层 | 技术 |
+|---|---|
+| 后端 | Python 3.13、FastAPI、Pydantic、SQLite、httpx |
+| 客户端 | Flutter（Android、Android TV、Web 共用）、media_kit（mpv 内核） |
+| 插件 | 进程外子进程 + JSON-RPC，公共 SDK `iris-plugin-sdk` |
+| 质量 | pytest、ruff、mypy（strict）、dart analyze、flutter test |
+| 部署 | Docker Buildx、Docker Compose、GHCR、amd64 + arm64 |
 
 ## 截图
 
@@ -78,6 +94,18 @@ curl -fsSL https://raw.githubusercontent.com/huhengbo/iris/main/scripts/install.
 3. `docker compose up -d --build`，用 `curl http://127.0.0.1:8080/api/health` 确认启动。
 4. 在前面配好 HTTPS 反向代理。
 5. 用管理员登录，在管理后台依次完成：在插件页配置资源来源（如 115 扫码登录，本地存储则只需挂载目录）和元数据插件、填写对外访问地址、添加资料库、同步。
+
+## 镜像与安装包
+
+镜像发布在 `ghcr.io/huhengbo/iris`，支持 `linux/amd64` 和 `linux/arm64`：
+
+| 场景 | 标签 |
+|---|---|
+| 正式版本 | `0.1.0` |
+| 当前小版本的最新补丁 | `0.1` |
+| 最新正式版本 | `latest` |
+
+Android / Android TV 的 APK 在 [Releases](https://github.com/huhengbo/iris/releases) 页下载，按设备架构选 `arm64-v8a`（多数手机和电视盒子）、`armeabi-v7a`（老设备）或 `x86_64`（模拟器）。APK 使用固定的 release 签名，之后的版本可以直接覆盖安装。
 
 ## 本地开发
 
@@ -146,7 +174,7 @@ keyAlias=…
 keyPassword=…
 ```
 
-没有这个文件时用 debug 签名，能安装，但不能覆盖安装 release 签名的版本。
+没有这个文件时用 debug 签名，能安装，但不能覆盖安装 release 签名的版本。**请备份好 `release.jks` 和密码**：丢失后已安装的用户只能卸载重装。CI 发布用仓库 Secrets（`ANDROID_KEYSTORE_BASE64`、`ANDROID_STORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`）提供同一把密钥。
 
 ### 检查
 
@@ -155,6 +183,15 @@ scripts/check.sh
 ```
 
 依次运行：后端 `ruff format --check`、`ruff check`、`mypy`（strict）、`pytest`；客户端 `dart format`、`dart analyze --fatal-infos`、`flutter test`。
+
+## 发布流程
+
+项目使用 [SemVer](https://semver.org/lang/zh-CN/)。当前版本保存在根目录 `VERSION`，`scripts/version.py check` 校验它与 `backend/pyproject.toml`、`client/pubspec.yaml`（`版本+versionCode`）、CHANGELOG 章节和 tag 一致，本地 `scripts/check.sh` 和 CI 都会运行。
+
+1. 日常变更记在 [CHANGELOG.md](CHANGELOG.md) 的 `[Unreleased]` 下。
+2. 发版时把它改成 `## [x.y.z] - 日期`，同步更新 `VERSION`、`backend/pyproject.toml` 和 `client/pubspec.yaml`（versionCode = x\*10000 + y\*100 + z，升级覆盖安装要求它单调递增）。
+3. 提交后推送 `vX.Y.Z` tag：流水线校验版本一致，发布 `X.Y.Z`、`X.Y`、`latest` 镜像，构建并签名 APK，并用 CHANGELOG 对应章节创建 GitHub Release。
+4. 推送到 `main` 只跑 CI，不发布。
 
 ## 已知限制
 

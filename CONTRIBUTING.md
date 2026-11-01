@@ -30,6 +30,7 @@ scripts/check.sh          # 全部检查，提交前必须通过
 
 - 提交信息使用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)，例如 `fix(sync): 修复定向同步误失效`、`feat(client): 收藏页`。
 - 一个 PR 只做一件事，说明动机、做法和验证方式；界面改动附截图。
+- 用户可感知的变更（新功能、修复、行为调整）记在 [CHANGELOG.md](CHANGELOG.md) 的 `[Unreleased]` 下；发版流程见 [README 的「发布流程」](README.md#发布流程)。
 - 接口变更后运行 `backend/.venv/bin/python scripts/update-openapi.py` 更新 `docs/api/openapi.json`。
 
 ## 许可

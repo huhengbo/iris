@@ -10,6 +10,9 @@ fi
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+echo "==> version"
+uv run --python 3.13 "$root/scripts/version.py" check
+
 echo "==> backend"
 cd "$root/backend"
 uv sync --locked --quiet
