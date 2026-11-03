@@ -1,6 +1,6 @@
 [project]
 name = "iris-backend"
-version = "0.4.0"
+version = "0.5.0"
 description = "光圈后端"
 requires-python = ">=3.13"
 license = "Apache-2.0"
