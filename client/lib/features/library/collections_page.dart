@@ -8,10 +8,11 @@ import '../../app/tv.dart';
 import '../../core/api/api_error.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/confirm_dialog.dart';
-import '../../core/widgets/focus_ring.dart';
+import '../../core/widgets/focus_tile.dart';
 import '../../core/widgets/snack.dart';
 import '../../core/widgets/text_prompt.dart';
 import '../auth/auth_controller.dart';
+import 'art_image.dart';
 import 'browse_api.dart';
 import 'collections_api.dart';
 import 'poster_card.dart';
@@ -59,29 +60,20 @@ class _CollectionsPageState extends ConsumerState<CollectionsPage> {
                   ? '新建合集后，再把系列或同主题的影片加进来。'
                   : '管理员可以按系列或主题把影片整理到一起。',
             )
-          : ListView.separated(
-              padding: const EdgeInsets.only(top: 8, bottom: 24),
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final item = items[index] as Map<String, dynamic>;
-                final overview = (item['overview'] as String?)?.trim();
-                return FocusRing(
-                  child: ListTile(
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final layout = PosterGridLayout(
+                  context,
+                  constraints.maxWidth - gutter * 2,
+                );
+                return GridView.builder(
+                  padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 24),
+                  gridDelegate: layout.delegate,
+                  itemCount: items.length,
+                  itemBuilder: (context, index) => _CollectionCard(
+                    collection: items[index],
                     // 遥控器进来落在第一个合集上；手机不抢焦点
                     autofocus: index == 0 && isTelevision(context),
-                    contentPadding: EdgeInsets.symmetric(horizontal: gutter),
-                    leading: const Icon(Icons.collections_bookmark_outlined),
-                    title: Text(item['title'] as String? ?? '未命名合集'),
-                    subtitle: overview == null || overview.isEmpty
-                        ? null
-                        : Text(
-                            overview,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => context.push('/collections/${item['id']}'),
                   ),
                 );
               },
@@ -159,6 +151,147 @@ class _CollectionsPageState extends ConsumerState<CollectionsPage> {
   }
 }
 
+/// 合集卡：封面 + 名称 + 成员数，和影视墙的海报卡同尺寸。
+class _CollectionCard extends StatelessWidget {
+  const _CollectionCard({required this.collection, required this.autofocus});
+
+  final CollectionSummary collection;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final count = collection.itemCount == 0
+        ? '暂无影片'
+        : '${collection.itemCount} 部';
+    return FocusTile(
+      autofocus: autofocus,
+      semanticLabel: '${collection.title}，$count',
+      onTap: () => context.push('/collections/${collection.id}'),
+      builder: (context, highlight) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AspectRatio(
+            aspectRatio: 2 / 3,
+            child: ArtFrame(
+              highlight: highlight,
+              radius: CinemaRadius.poster,
+              child: ArtImage(
+                art: collection.cover,
+                icon: Icons.collections_bookmark_outlined,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            collection.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: textTheme.bodySmall!.copyWith(
+              color: highlight.focused
+                  ? CinemaColors.text0
+                  : CinemaColors.text1,
+              fontWeight: highlight.focused ? FontWeight.w600 : null,
+            ),
+          ),
+          Text(
+            count,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: textTheme.labelSmall!.copyWith(color: CinemaColors.text2),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 合集详情页顶部：背景用合集的头图（压暗），左边封面，右边名称、成员数和简介。
+class _CollectionHeader extends StatelessWidget {
+  const _CollectionHeader({required this.detail, required this.gutter});
+
+  final CollectionDetail detail;
+  final double gutter;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final overview = detail.overview;
+    return Stack(
+      children: [
+        if (!detail.backdrop.isEmpty)
+          Positioned.fill(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ArtImage(art: detail.backdrop),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0xB3000000), CinemaColors.bg],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(gutter, 12, gutter, 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 96,
+                child: AspectRatio(
+                  aspectRatio: 2 / 3,
+                  child: ArtFrame(
+                    highlight: const TileHighlight(
+                      focused: false,
+                      hovered: false,
+                    ),
+                    radius: CinemaRadius.poster,
+                    child: ArtImage(
+                      art: detail.cover,
+                      icon: Icons.collections_bookmark_outlined,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(detail.title, style: textTheme.titleLarge),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${detail.items.length} 部影片',
+                      style: textTheme.labelMedium!.copyWith(
+                        color: CinemaColors.text1,
+                      ),
+                    ),
+                    if (overview != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        overview,
+                        maxLines: 6,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.bodyMedium,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class CollectionDetailPage extends ConsumerStatefulWidget {
   const CollectionDetailPage({super.key, required this.collectionId});
 
@@ -190,7 +323,6 @@ class _CollectionDetailPageState extends ConsumerState<CollectionDetailPage> {
     final gutter = CinemaSpacing.gutterFor(
       wide: MediaQuery.sizeOf(context).width >= wideLayoutBreakpoint,
     );
-    final overview = detail?.overview;
     final members = detail?.items ?? const <MediaCard>[];
     return Scaffold(
       // 批量操作栏和资料库海报墙的一致：已选数量 + 全选 + 操作 + 退出
@@ -234,12 +366,19 @@ class _CollectionDetailPageState extends ConsumerState<CollectionDetailPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         )
-                      else
+                      else ...[
+                        IconButton(
+                          tooltip: '设为封面',
+                          // 封面取一个成员的海报，所以只能选一项
+                          onPressed: _selected.length == 1 ? _setCover : null,
+                          icon: const Icon(Icons.image_outlined),
+                        ),
                         IconButton(
                           tooltip: '移出合集',
                           onPressed: _selected.isEmpty ? null : _remove,
                           icon: const Icon(Icons.playlist_remove),
                         ),
+                      ],
                       IconButton(
                         tooltip: '退出选择',
                         onPressed: _busy ? null : _exitSelection,
@@ -259,8 +398,15 @@ class _CollectionDetailPageState extends ConsumerState<CollectionDetailPage> {
               onPressed: () =>
                   context.canPop() ? context.pop() : context.go('/'),
             ),
-            title: Text(detail?.title ?? '合集'),
+            // 名称在下面的头部里显示
+            title: const Text('合集'),
             actions: [
+              if (isAdmin && detail?.coverItemId != null)
+                IconButton(
+                  tooltip: '恢复默认封面',
+                  onPressed: _busy ? null : () => _resetCover(),
+                  icon: const Icon(Icons.restore),
+                ),
               if (isAdmin && members.isNotEmpty)
                 IconButton(
                   tooltip: _selectionMode ? '退出选择' : '选择条目',
@@ -273,15 +419,9 @@ class _CollectionDetailPageState extends ConsumerState<CollectionDetailPage> {
                 ),
             ],
           ),
-          if (overview != null && overview.isNotEmpty)
+          if (detail != null)
             SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(gutter, 4, gutter, 8),
-                child: Text(
-                  overview,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ),
+              child: _CollectionHeader(detail: detail, gutter: gutter),
             ),
           PagedPosterGrid(
             value: value.whenData(
@@ -309,6 +449,41 @@ class _CollectionDetailPageState extends ConsumerState<CollectionDetailPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _setCover() async {
+    final itemId = _selected.single;
+    final title = ref
+        .read(collectionDetailProvider(_id))
+        .value
+        ?.items
+        .firstWhere((m) => m.id == itemId)
+        .title;
+    await _changeCover(itemId, '已将「${title ?? '所选影片'}」设为封面');
+  }
+
+  Future<void> _resetCover() => _changeCover(null, '已恢复默认封面');
+
+  Future<void> _changeCover(int? itemId, String done) async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(collectionsApiProvider).setCover(_id, itemId);
+      final libraryId = ref
+          .read(collectionDetailProvider(_id))
+          .value
+          ?.libraryId;
+      ref.invalidate(collectionDetailProvider(_id));
+      if (libraryId != null) {
+        ref.invalidate(libraryCollectionsProvider(libraryId));
+      }
+      if (!mounted) return;
+      _exitSelection();
+      showSnack(context, done);
+    } catch (error) {
+      if (mounted) showApiErrorSnack(context, error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _remove() async {

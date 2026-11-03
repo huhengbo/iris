@@ -37,6 +37,16 @@ class CategorySummary:
 
 
 @dataclass(frozen=True)
+class CollectionCover:
+    """合集对当前用户可见的成员数，和第一个有海报的成员的海报。"""
+
+    item_count: int
+    poster: list[ImageSize]
+    # 合集详情页的头图
+    backdrop: list[ImageSize]
+
+
+@dataclass(frozen=True)
 class LibraryDetail:
     library: LibrarySummary
     # 资料库里出现过的类型和年份，供海报墙筛选

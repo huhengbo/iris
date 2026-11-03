@@ -13,7 +13,7 @@ from app.clock import Clock, to_iso
 from app.db import Database
 from app.errors import AppError, NotFound
 from app.library.images import SOURCE_WIDTH, ImageError, ImageKind, ImageStore
-from app.library.metadata_providers import MetadataProviders, image_key
+from app.library.metadata_providers import TMDB_PROVIDER, MetadataProviders, image_key
 from app.library.recognize import LibraryKind
 from app.priority import Priority
 
@@ -28,6 +28,8 @@ _IMAGE_COLUMNS: tuple[tuple[str, str, ImageKind], ...] = (
     ("season", "poster", "poster"),
     ("episode", "still", "still"),
     ("person", "profile", "profile"),
+    ("collection", "poster", "poster"),
+    ("collection", "backdrop", "backdrop"),
 )
 # 每张表限定到指定资料库的条件
 _IMAGE_SCOPE = {
@@ -37,6 +39,7 @@ _IMAGE_SCOPE = {
     "ON m.id = s.media_item_id WHERE m.library_id IN ({marks}))",
     "person": "t.id IN (SELECT c.person_id FROM credit c JOIN media_item m "
     "ON m.id = c.media_item_id WHERE m.library_id IN ({marks}))",
+    "collection": "t.library_id IN ({marks})",
 }
 # 图片来源属于哪个元数据插件：条目和人物记在自己身上，季和集跟随所属条目
 _IMAGE_PROVIDER = {
@@ -45,6 +48,8 @@ _IMAGE_PROVIDER = {
     "episode": "(SELECT m.provider_id FROM season s JOIN media_item m "
     "ON m.id = s.media_item_id WHERE s.id = t.season_id)",
     "person": "t.provider_id",
+    # 合集的图片路径只来自 TMDB 系列
+    "collection": f"'{TMDB_PROVIDER}'",
 }
 
 

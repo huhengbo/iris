@@ -197,6 +197,17 @@ class TmdbHttpGateway:
                 if kind == "movie"
                 else None
             ),
+            tmdb_collection_name=_text(_obj(data.get("belongs_to_collection")).get("name"))
+            if kind == "movie"
+            else None,
+            tmdb_collection_poster=_text(_obj(data.get("belongs_to_collection")).get("poster_path"))
+            if kind == "movie"
+            else None,
+            tmdb_collection_backdrop=_text(
+                _obj(data.get("belongs_to_collection")).get("backdrop_path")
+            )
+            if kind == "movie"
+            else None,
             content_rating=_content_rating(data, kind),
             runtime=runtime,
             poster_path=_text(data.get("poster_path")),

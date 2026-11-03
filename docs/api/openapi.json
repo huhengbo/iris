@@ -1781,10 +1781,147 @@
         "title": "ClientPlaysOut",
         "type": "object"
       },
+      "CollectionCardOut": {
+        "description": "用户浏览用：在合集上多带封面和当前用户看得到的成员数。",
+        "properties": {
+          "automatic": {
+            "title": "Automatic",
+            "type": "integer"
+          },
+          "backdrop": {
+            "items": {
+              "$ref": "#/components/schemas/ImageOut"
+            },
+            "title": "Backdrop",
+            "type": "array"
+          },
+          "cover": {
+            "items": {
+              "$ref": "#/components/schemas/ImageOut"
+            },
+            "title": "Cover",
+            "type": "array"
+          },
+          "cover_item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Item Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "library_id": {
+            "title": "Library Id",
+            "type": "integer"
+          },
+          "overview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overview"
+          },
+          "poster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster"
+          },
+          "smart_filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smart Filter"
+          },
+          "sort_mode": {
+            "title": "Sort Mode",
+            "type": "string"
+          },
+          "sort_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Title"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tmdb_collection_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tmdb Collection Id"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "library_id",
+          "title",
+          "sort_title",
+          "overview",
+          "poster",
+          "tmdb_collection_id",
+          "sort_mode",
+          "smart_filter",
+          "automatic",
+          "cover_item_id",
+          "created_at",
+          "updated_at",
+          "cover",
+          "backdrop",
+          "item_count"
+        ],
+        "title": "CollectionCardOut",
+        "type": "object"
+      },
       "CollectionDetailOut": {
         "properties": {
           "collection": {
-            "$ref": "#/components/schemas/CollectionOut"
+            "$ref": "#/components/schemas/CollectionCardOut"
           },
           "items": {
             "items": {
@@ -1925,6 +2062,17 @@
             "title": "Automatic",
             "type": "integer"
           },
+          "cover_item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Item Id"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -2016,6 +2164,7 @@
           "sort_mode",
           "smart_filter",
           "automatic",
+          "cover_item_id",
           "created_at",
           "updated_at"
         ],
@@ -2122,6 +2271,23 @@
           "public_url"
         ],
         "title": "ConfigServerOut",
+        "type": "object"
+      },
+      "CoverIn": {
+        "properties": {
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          }
+        },
+        "title": "CoverIn",
         "type": "object"
       },
       "CreateLibraryRequest": {
@@ -11233,6 +11399,78 @@
           }
         },
         "summary": "Update Collection",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/collections/{collection_id}/cover": {
+      "put": {
+        "operationId": "set_collection_cover_api_admin_collections__collection_id__cover_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Set Collection Cover",
         "tags": [
           "admin"
         ]
@@ -20714,7 +20952,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/CollectionOut"
+                    "$ref": "#/components/schemas/CollectionCardOut"
                   },
                   "title": "Response List Collections Api Libraries  Library Id  Collections Get",
                   "type": "array"

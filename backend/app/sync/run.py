@@ -19,6 +19,7 @@ from app.clock import Clock, to_iso
 from app.db import Database
 from app.errors import AppError
 from app.library.catalog import CatalogRepository, NfoTask, folder_name
+from app.library.collections import PLACEHOLDER_PREFIX, fill_from_tmdb
 from app.library.fill import Filler
 from app.library.images import ImageError
 from app.library.metadata import Metadata
@@ -720,7 +721,7 @@ class SyncRun:
                             "INSERT INTO collection(library_id,title,tmdb_collection_id,automatic,"
                             "created_at,updated_at) "
                             "VALUES (?,?,?,1,?,?)",
-                            (library_id, f"TMDB 系列 {tmdb_id}", tmdb_id, now, now),
+                            (library_id, f"{PLACEHOLDER_PREFIX}{tmdb_id}", tmdb_id, now, now),
                         )
                         assert cur.lastrowid is not None
                         collection_id = int(cur.lastrowid)
@@ -729,6 +730,7 @@ class SyncRun:
                         connection.execute(
                             "UPDATE collection SET updated_at=? WHERE id=?", (now, collection_id)
                         )
+                    fill_from_tmdb(connection, collection_id, tmdb_id)
                     active_ids.add(collection_id)
                     ids = [int(value) for value in str(group["ids"]).split(",") if value]
                     connection.executemany(

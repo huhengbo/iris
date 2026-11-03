@@ -56,6 +56,10 @@ class TmdbDetails:
     studios: list[str] = field(default_factory=list)
     countries: list[str] = field(default_factory=list)
     tmdb_collection_id: int | None = None
+    # 所属系列的名称和图片（电影详情里随带，不用另外请求）
+    tmdb_collection_name: str | None = None
+    tmdb_collection_poster: str | None = None
+    tmdb_collection_backdrop: str | None = None
     # 内容分级，如 TV-MA、PG-13，只用于展示
     content_rating: str | None = None
     runtime: int | None = None

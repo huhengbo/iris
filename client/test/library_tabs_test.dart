@@ -275,13 +275,13 @@ void main() {
         api
           ..on('GET /api/libraries/1', library())
           ..on('GET /api/libraries/1/collections', [
-            {'id': 3, 'title': '漫威电影宇宙', 'overview': '按上映顺序'},
+            {'id': 3, 'title': '漫威电影宇宙', 'item_count': 3, 'cover': <Object>[]},
           ]);
       });
       // 嵌在资料库页里，不另起一个「合集」AppBar
       expect(find.text('合集'), findsOneWidget);
       expect(find.text('漫威电影宇宙'), findsOneWidget);
-      expect(find.text('按上映顺序'), findsOneWidget);
+      expect(find.text('3 部'), findsOneWidget);
     });
   });
 }

@@ -269,6 +269,7 @@ class Scraper:
                 source="provider",
             )
             connection.execute("DELETE FROM credit WHERE media_item_id = ?", (item_id,))
+        _write_tmdb_collection(connection, details)
         order = 0
         for role, people in (
             ("director", details.directors),
@@ -292,6 +293,25 @@ class Scraper:
         _write_external_ids(connection, item_id, details.external_ids)
         _upsert_source(connection, item_id, details, now)
         return item_id
+
+
+def _write_tmdb_collection(connection: sqlite3.Connection, details: MetadataRecord) -> None:
+    """记下 TMDB 系列的名称和图片，自动合集同步时用。新抓到的值覆盖旧的，但不会用空值覆盖。"""
+    collection_id = _tmdb_collection_id(details)
+    if collection_id is None or not details.collection_name:
+        return
+    connection.execute(
+        "INSERT INTO tmdb_collection(id, name, poster_path, backdrop_path) VALUES (?,?,?,?) "
+        "ON CONFLICT(id) DO UPDATE SET name = excluded.name, "
+        "poster_path = COALESCE(excluded.poster_path, poster_path), "
+        "backdrop_path = COALESCE(excluded.backdrop_path, backdrop_path)",
+        (
+            collection_id,
+            details.collection_name,
+            details.collection_poster,
+            details.collection_backdrop,
+        ),
+    )
 
 
 def _tmdb_collection_id(details: MetadataRecord) -> int | None:

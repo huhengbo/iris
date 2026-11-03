@@ -104,6 +104,8 @@ class ImageStore:
                 UNION SELECT still_image_id FROM episode WHERE still_image_id IS NOT NULL
                 UNION SELECT profile_image_id FROM person WHERE profile_image_id IS NOT NULL
                 UNION SELECT cover_image_id FROM library WHERE cover_image_id IS NOT NULL
+                UNION SELECT poster_image_id FROM collection WHERE poster_image_id IS NOT NULL
+                UNION SELECT backdrop_image_id FROM collection WHERE backdrop_image_id IS NOT NULL
             )
             """
         ).fetchall()

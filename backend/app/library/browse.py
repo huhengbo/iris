@@ -16,6 +16,7 @@ from app.auth.users import User
 from app.errors import NotFound
 from app.library.browse_models import (
     CategorySummary,
+    CollectionCover,
     CreditRole,
     Episode,
     EpisodeRef,
@@ -740,6 +741,56 @@ class BrowseQueries:
             (collection_id, *self._library_ids),
         ).fetchall()
         return self._cards(rows)
+
+    def collection_covers(self, collection_ids: Sequence[int]) -> dict[int, CollectionCover]:
+        """合集封面、头图和成员数。成员只算当前用户看得到、有可用文件的。
+
+        封面依次取：管理员指定的成员的海报、合集自己的海报（TMDB 系列）、合集顺序里第一个
+        有海报的成员的海报；头图取合集自己的背景图，没有时用第一个有背景图的成员的。"""
+        if not collection_ids:
+            return {}
+        marks = ", ".join("?" for _ in collection_ids)
+        rows = self._db.execute(
+            "SELECT ci.collection_id, ci.media_item_id, pi.hash AS poster_hash, "
+            "bi.hash AS backdrop_hash FROM collection_item ci "
+            "JOIN media_item m ON m.id = ci.media_item_id "
+            "LEFT JOIN image pi ON pi.id = m.poster_image_id "
+            "LEFT JOIN image bi ON bi.id = m.backdrop_image_id "
+            f"WHERE ci.collection_id IN ({marks}) AND {self._scope} AND {PLAYABLE} "
+            "ORDER BY ci.collection_id, ci.position, m.title, m.id",
+            (*collection_ids, *self._library_ids),
+        ).fetchall()
+        own = {
+            row["id"]: row
+            for row in self._db.execute(
+                "SELECT c.id, c.cover_item_id, pi.hash AS poster_hash, bi.hash AS backdrop_hash "
+                "FROM collection c LEFT JOIN image pi ON pi.id = c.poster_image_id "
+                f"LEFT JOIN image bi ON bi.id = c.backdrop_image_id WHERE c.id IN ({marks})",
+                tuple(collection_ids),
+            )
+        }
+        counts: dict[int, int] = {}
+        first_poster: dict[int, str] = {}
+        first_backdrop: dict[int, str] = {}
+        chosen: dict[int, str] = {}
+        for row in rows:
+            cid = row["collection_id"]
+            counts[cid] = counts.get(cid, 0) + 1
+            if row["poster_hash"]:
+                first_poster.setdefault(cid, row["poster_hash"])
+                if own[cid]["cover_item_id"] == row["media_item_id"]:
+                    chosen[cid] = row["poster_hash"]
+            if row["backdrop_hash"]:
+                first_backdrop.setdefault(cid, row["backdrop_hash"])
+        covers: dict[int, CollectionCover] = {}
+        for cid in collection_ids:
+            mine = own.get(cid)
+            poster = chosen.get(cid) or (mine and mine["poster_hash"]) or first_poster.get(cid)
+            backdrop = (mine and mine["backdrop_hash"]) or first_backdrop.get(cid)
+            covers[cid] = CollectionCover(
+                counts.get(cid, 0), image_sizes(poster, "poster"), image_sizes(backdrop, "backdrop")
+            )
+        return covers
 
     # ---- 内部 ----
 

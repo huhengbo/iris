@@ -184,6 +184,9 @@ def _record(details: TmdbDetails, *, provider_id: str) -> MetadataRecord:
         ),
         external_ids=external_ids,
         fallback_fields=details.fallback_fields,
+        collection_name=details.tmdb_collection_name,
+        collection_poster=details.tmdb_collection_poster,
+        collection_backdrop=details.tmdb_collection_backdrop,
     )
 
 

@@ -86,6 +86,11 @@ class TmdbDetails:
     writers: list[Any] = field(default_factory=list)
     external_ids: dict[str, str] = field(default_factory=dict)
     fallback_fields: set[str] = field(default_factory=set)
+    # 所属 TMDB 系列（电影）：ID 以字符串传给宿主，和插件协议一致
+    collection_id: str | None = None
+    collection_name: str | None = None
+    collection_poster: str | None = None
+    collection_backdrop: str | None = None
 
 
 class CallLog:
@@ -357,6 +362,13 @@ class FakeTmdb:
             "external_ids": details.external_ids,
             "fallback_fields": sorted(details.fallback_fields),
         }
+        if details.collection_id is not None:
+            fields.update(
+                collection_id=details.collection_id,
+                collection_name=details.collection_name,
+                collection_poster=details.collection_poster,
+                collection_backdrop=details.collection_backdrop,
+            )
         self.control.call(
             "metadata",
             "set_details",

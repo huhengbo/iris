@@ -452,6 +452,10 @@ class MetadataRecord:
     external_ids: Mapping[str, str] = field(default_factory=dict)
     # 不是请求语言、由插件拿别的语言顶上的字段（overview、tagline、title），补缺时当作缺失
     fallback_fields: frozenset[str] = frozenset()
+    # 所属系列的名称和图片，用来给自动合集命名和配图
+    collection_name: str | None = None
+    collection_poster: str | None = None
+    collection_backdrop: str | None = None
 
 
 @dataclass(frozen=True)

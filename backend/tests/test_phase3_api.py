@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
+from dataclasses import replace
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -179,6 +180,47 @@ def test_collection_detail_cards_and_member_editing(
         assert set(item) == set(ItemCardOut.model_fields)
         assert item == cards[item["id"]]
 
+    # 成员数只算有可用文件的；封面取合集顺序里第一个有海报的成员，前面没有海报的跳过
+    assert body["collection"]["item_count"] == len(body["items"]) == 2
+    assert body["collection"]["cover"] == body["items"][0]["poster"] != []
+    _query(
+        config, "UPDATE media_item SET poster_image_id = NULL WHERE id = ?", body["items"][0]["id"]
+    )
+    after = detail()
+    assert after["collection"]["cover"] == after["items"][1]["poster"] != []
+    listing = client.get(f"/api/libraries/{ids['movies']}/collections", headers=headers).json()
+    assert [(c["id"], c["item_count"], c["cover"]) for c in listing] == [
+        (cid, 2, after["collection"]["cover"])
+    ]
+
+    # 合集自己的海报（TMDB 系列）优先于成员；管理员指定的成员又优先于它
+    _query(
+        config,
+        "INSERT INTO image(hash, kind, source, created_at) VALUES ('beef', 'poster', 's', 'now')",
+    )
+    _query(
+        config,
+        "UPDATE collection SET poster_image_id = (SELECT id FROM image WHERE hash = 'beef') "
+        "WHERE id = ?",
+        cid,
+    )
+    own = detail()["collection"]["cover"]
+    assert [size["url"].split("/")[-1].split("_")[0] for size in own] == ["beef"] * len(own) != []
+    second = after["items"][1]
+    picked = client.put(
+        f"/api/admin/collections/{cid}/cover", headers=headers, json={"item_id": second["id"]}
+    )
+    assert picked.status_code == 200, picked.text
+    assert picked.json()["cover_item_id"] == second["id"]
+    assert detail()["collection"]["cover"] == second["poster"]
+    outsider = client.put(
+        f"/api/admin/collections/{cid}/cover", headers=headers, json={"item_id": alien + 999}
+    )
+    assert outsider.status_code == 404
+    reset = client.put(f"/api/admin/collections/{cid}/cover", headers=headers, json={})
+    assert reset.json()["cover_item_id"] is None
+    assert detail()["collection"]["cover"] == own
+
     # 移除后再追加：排到最后，标为手动成员；重复追加什么也不做
     remove = client.delete(f"/api/admin/collections/{cid}/items/{stars}", headers=headers)
     assert remove.status_code == 204, remove.text
@@ -232,3 +274,51 @@ def test_alert_lifecycle_and_fingerprint_dedup(client: TestClient, admin: dict[s
     assert len(client.get("/api/admin/alerts?active=true", headers=admin).json()) == 2
     # 处理后同一指纹可以再次告警
     assert client.post("/api/admin/alerts", headers=admin, json=body).status_code == 201
+
+
+def test_automatic_collection_gets_tmdb_name_and_poster(
+    client: TestClient,
+    admin: dict[str, str],
+    cloud115: FakeCloud115,
+    tmdb: FakeTmdb,
+    config: AppConfig,
+) -> None:
+    ids = build_catalog(client, admin, cloud115, tmdb)
+    headers = fresh_admin(client)
+    members = [find(client, title)["id"] for title in ("流浪地球", "疯狂的外星人")]
+    for tmdb_id in (535167, 412302):
+        title = tmdb.titles[("movie", tmdb_id)]
+        title.details = replace(
+            title.details,
+            collection_id="77",
+            collection_name="郭帆电影系列",
+            collection_poster="/series.jpg",
+            collection_backdrop="/series-bg.jpg",
+        )
+    for item_id in members:
+        refreshed = client.post(f"/api/admin/items/{item_id}/refresh", headers=headers)
+        assert refreshed.status_code == 200, refreshed.text
+
+    synced = client.post(
+        f"/api/admin/libraries/{ids['movies']}/collections/auto-sync", headers=headers
+    )
+    assert synced.status_code == 200, synced.text
+    [collection] = client.get(f"/api/libraries/{ids['movies']}/collections", headers=headers).json()
+    assert collection["title"] == "郭帆电影系列"
+    # 同步时只记下路径，图片在下一次抓取后下载；下载前封面还是成员的海报
+    assert collection["cover"] != []
+
+    client.post(f"/api/admin/items/{members[0]}/refresh", headers=headers)
+    [paths] = _query(
+        config,
+        "SELECT poster_path, backdrop_path, poster_image_id IS NOT NULL, "
+        "backdrop_image_id IS NOT NULL FROM collection",
+    )
+    assert paths == ("/series.jpg", "/series-bg.jpg", 1, 1)
+    detail = client.get(f"/api/collections/{collection['id']}", headers=headers).json()
+    assert detail["collection"]["backdrop"] != []
+    # 假 TMDB 的图片内容都一样，所以只能确认封面指向合集自己的海报记录
+    [(poster_hash,)] = _query(
+        config, "SELECT i.hash FROM collection c JOIN image i ON i.id = c.poster_image_id"
+    )
+    assert all(poster_hash in size["url"] for size in detail["collection"]["cover"])

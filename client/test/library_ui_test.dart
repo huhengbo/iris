@@ -350,6 +350,11 @@ GoRouter testRouter(String location) => GoRouter(
       ),
     ),
     GoRoute(
+      path: '/library/:id/collections',
+      builder: (_, state) =>
+          CollectionsPage(libraryId: int.parse(state.pathParameters['id']!)),
+    ),
+    GoRoute(
       path: '/collections/:id',
       builder: (_, state) => CollectionDetailPage(
         collectionId: int.parse(state.pathParameters['id']!),
@@ -3120,6 +3125,79 @@ void main() {
       expect(find.text('已删除播放列表'), findsOneWidget);
     });
 
+    testWidgets('collections list shows covers and member counts', (
+      tester,
+    ) async {
+      final (api, router) = await pumpBrowse(tester, '/library/1/collections', (
+        api,
+      ) {
+        api
+          ..on('GET /api/libraries/1/collections', [
+            {
+              'id': 3,
+              'title': '刘慈欣宇宙',
+              'overview': null,
+              'item_count': 2,
+              'cover': wanderingEarth['poster'],
+            },
+            {'id': 4, 'title': '空合集', 'item_count': 0, 'cover': []},
+          ])
+          ..on('GET /api/collections/3', {
+            'collection': {
+              'id': 3,
+              'library_id': 1,
+              'title': '刘慈欣宇宙',
+              'cover': <Object>[],
+              'backdrop': <Object>[],
+            },
+            'items': [wanderingEarth],
+          });
+      });
+      expect(find.text('刘慈欣宇宙'), findsOneWidget);
+      expect(find.text('2 部'), findsOneWidget);
+      expect(find.text('空合集'), findsOneWidget);
+      expect(find.text('暂无影片'), findsOneWidget);
+      expect(api.requests, contains('GET /api/libraries/1/collections'));
+
+      await tester.tap(find.text('刘慈欣宇宙'));
+      await tester.pumpAndSettle();
+      expect(location(router), '/collections/3');
+    });
+
+    testWidgets('admins pick a member as the collection cover', (tester) async {
+      final (api, _) = await pumpBrowse(tester, '/collections/3', (api) {
+        api
+          ..on('GET /api/collections/3', {
+            'collection': {
+              'id': 3,
+              'library_id': 1,
+              'title': '刘慈欣宇宙',
+              'cover_item_id': 12,
+              'cover': <Object>[],
+              'backdrop': <Object>[],
+            },
+            'items': [wanderingEarth, crazyAlien],
+          })
+          ..on('PUT /api/admin/collections/3/cover', <String, Object?>{});
+      }, overrides: [authControllerProvider.overrideWith(_SignedInAdmin.new)]);
+      // 已指定过封面时顶栏有「恢复默认封面」，点了发空的 item_id
+      expect(find.text('2 部影片'), findsOneWidget);
+      await tester.tap(find.byTooltip('恢复默认封面'));
+      await tester.pumpAndSettle();
+      const cover = 'PUT /api/admin/collections/3/cover';
+      expect(api.bodies[cover], {'item_id': null});
+      expect(find.text('已恢复默认封面'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('选择条目'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('流浪地球'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('设为封面'));
+      await tester.pumpAndSettle();
+      expect(api.bodies[cover], {'item_id': 10});
+      expect(find.text('已将「流浪地球」设为封面'), findsOneWidget);
+    });
+
     testWidgets('a collection shows posters, admins remove members', (
       tester,
     ) async {
@@ -3131,6 +3209,8 @@ void main() {
               'library_id': 1,
               'title': '刘慈欣宇宙',
               'overview': '改编自刘慈欣的作品',
+              'cover': <Object>[],
+              'backdrop': <Object>[],
             },
             'items': [wanderingEarth, crazyAlien],
           })

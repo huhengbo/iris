@@ -12,8 +12,10 @@ from app.library.browse import visible_library_ids
 
 _COLUMNS = (
     "id, library_id, title, sort_title, overview, poster, tmdb_collection_id, sort_mode, "
-    "smart_filter, automatic, created_at, updated_at"
+    "smart_filter, automatic, cover_item_id, created_at, updated_at"
 )
+# 自动合集刚建好时的名称，抓到 TMDB 系列名之前一直用它
+PLACEHOLDER_PREFIX = "TMDB 系列 "
 _ORDER = "COALESCE(sort_title, title), id"
 
 
@@ -30,6 +32,8 @@ class Collection:
     # 智能筛选条件以 JSON 文本原样保存和返回，由客户端解释
     smart_filter: str | None
     automatic: bool
+    # 管理员指定用哪个成员的海报作封面，没有指定时为空
+    cover_item_id: int | None
     created_at: str
     updated_at: str
 
@@ -228,7 +232,7 @@ class CollectionRepository:
                 cursor = self._db.execute(
                     "INSERT INTO collection(library_id,title,sort_title,tmdb_collection_id,"
                     "automatic,created_at,updated_at) VALUES (?,?,?,?,1,?,?)",
-                    (library_id, f"TMDB 系列 {tmdb_id}", None, tmdb_id, now, now),
+                    (library_id, f"{PLACEHOLDER_PREFIX}{tmdb_id}", None, tmdb_id, now, now),
                 )
                 assert cursor.lastrowid is not None
                 collection_id = int(cursor.lastrowid)
@@ -236,6 +240,7 @@ class CollectionRepository:
             else:
                 collection_id = int(row["id"])
                 updated += 1
+            fill_from_tmdb(self._db, collection_id, tmdb_id)
             ids = [int(value) for value in str(group["ids"]).split(",") if value]
             self._db.executemany(
                 "INSERT INTO collection_item(collection_id,media_item_id,position,manual) "
@@ -245,9 +250,41 @@ class CollectionRepository:
             )
         return AutoSyncResult(created=created, updated=updated, groups=len(groups))
 
+    def set_cover(self, collection_id: int, item_id: int | None) -> Collection:
+        """指定用某个成员的海报作封面；item_id 为空时恢复默认。"""
+        self.require(collection_id)
+        if (
+            item_id is not None
+            and not self._db.execute(
+                "SELECT 1 FROM collection_item WHERE collection_id = ? AND media_item_id = ?",
+                (collection_id, item_id),
+            ).fetchone()
+        ):
+            raise NotFound("条目不在合集里")
+        self._db.execute(
+            "UPDATE collection SET cover_item_id = ?, updated_at = ? WHERE id = ?",
+            (item_id, to_iso(self._clock.now()), collection_id),
+        )
+        return self.require(collection_id)
+
     def _require_library(self, library_id: int) -> None:
         if self._db.execute("SELECT 1 FROM library WHERE id = ?", (library_id,)).fetchone() is None:
             raise NotFound("资料库不存在")
+
+
+def fill_from_tmdb(connection: sqlite3.Connection, collection_id: int, tmdb_id: int) -> None:
+    """自动合集用 TMDB 系列的名称和图片补空：还是初始名称才改名，已有的图片不覆盖，
+    这样管理员改过的名称不会被下一次同步改回去。"""
+    connection.execute(
+        "UPDATE collection SET "
+        "title = CASE WHEN title LIKE ? || '%' THEN "
+        "COALESCE((SELECT name FROM tmdb_collection WHERE id = ?), title) ELSE title END, "
+        "poster_path = COALESCE(poster_path, (SELECT poster_path FROM tmdb_collection "
+        "WHERE id = ?)), "
+        "backdrop_path = COALESCE(backdrop_path, (SELECT backdrop_path FROM tmdb_collection "
+        "WHERE id = ?)) WHERE id = ?",
+        (PLACEHOLDER_PREFIX, tmdb_id, tmdb_id, tmdb_id, collection_id),
+    )
 
 
 def _filter_text(smart_filter: dict[str, Any] | None) -> str | None:
@@ -269,6 +306,7 @@ def _to_collection(row: sqlite3.Row) -> Collection:
         sort_mode=row["sort_mode"],
         smart_filter=row["smart_filter"],
         automatic=bool(row["automatic"]),
+        cover_item_id=row["cover_item_id"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

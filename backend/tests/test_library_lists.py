@@ -215,6 +215,53 @@ def test_automatic_collections_keep_manual_members(
     }
 
 
+def test_automatic_collection_takes_tmdb_name_and_art(
+    db: sqlite3.Connection, clock: FakeClock
+) -> None:
+    add_library(db, 1)
+    for item_id in (10, 11):
+        add_movie(db, item_id, 1)
+    db.execute("UPDATE media_item SET tmdb_collection_id = 7 WHERE id IN (10, 11)")
+    collections = CollectionRepository(db, clock)
+
+    # 还没抓到系列信息时用初始名称
+    collections.sync_automatic(1)
+    [auto] = collections.list_all(1)
+    assert auto.title == "TMDB 系列 7"
+
+    db.execute("INSERT INTO tmdb_collection VALUES (7, '流浪地球系列', '/p.jpg', '/b.jpg')")
+    collections.sync_automatic(1)
+    [auto] = collections.list_all(1)
+    assert auto.title == "流浪地球系列"
+    art = db.execute(
+        "SELECT poster_path, backdrop_path FROM collection WHERE id = ?", (auto.id,)
+    ).fetchone()
+    assert (art["poster_path"], art["backdrop_path"]) == ("/p.jpg", "/b.jpg")
+
+    # 管理员改过名、TMDB 之后换了名字：不再覆盖
+    db.execute("UPDATE collection SET title = '我的科幻' WHERE id = ?", (auto.id,))
+    db.execute("UPDATE tmdb_collection SET name = '新名字', poster_path = '/new.jpg'")
+    collections.sync_automatic(1)
+    [auto] = collections.list_all(1)
+    assert auto.title == "我的科幻"
+    row = db.execute("SELECT poster_path FROM collection WHERE id = ?", (auto.id,)).fetchone()
+    assert row["poster_path"] == "/p.jpg"
+
+
+def test_set_cover_requires_a_member(db: sqlite3.Connection, clock: FakeClock) -> None:
+    add_library(db, 1)
+    for item_id in (10, 11):
+        add_movie(db, item_id, 1)
+    collections = CollectionRepository(db, clock)
+    collection = collections.create(CollectionDraft(1, "合集", None, None, None, "custom", None))
+    collections.add_member(collection.id, 10)
+
+    assert collections.set_cover(collection.id, 10).cover_item_id == 10
+    with pytest.raises(NotFound, match="条目不在合集里"):
+        collections.set_cover(collection.id, 11)
+    assert collections.set_cover(collection.id, None).cover_item_id is None
+
+
 def test_playlist_permissions(db: sqlite3.Connection, clock: FakeClock) -> None:
     owner = add_user(db, 1)
     other = add_user(db, 2)

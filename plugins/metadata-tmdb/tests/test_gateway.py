@@ -91,6 +91,32 @@ def test_movie_details_collect_imdb_and_keep_chinese(
     assert "external_ids" not in recorder.requests[0].params["append_to_response"]
 
 
+def test_movie_details_carry_the_series_name_and_images(
+    gateway: TmdbHttpGateway, recorder: Recorder
+) -> None:
+    recorder.json(
+        "/3/movie/157336",
+        {
+            "id": 157336,
+            "title": "星际穿越",
+            "original_title": "Interstellar",
+            "original_language": "en",
+            "release_date": "2014-11-05",
+            "belongs_to_collection": {
+                "id": 99,
+                "name": " 星际系列 ",
+                "poster_path": "/cp.jpg",
+                "backdrop_path": None,
+            },
+        },
+    )
+
+    details = gateway.details(TmdbAccess(V3_KEY), "movie", 157336)
+
+    assert (details.tmdb_collection_id, details.tmdb_collection_name) == (99, "星际系列")
+    assert (details.tmdb_collection_poster, details.tmdb_collection_backdrop) == ("/cp.jpg", None)
+
+
 def test_series_details_collect_imdb_and_tvdb(gateway: TmdbHttpGateway, recorder: Recorder) -> None:
     recorder.json(
         "/3/tv/108545",

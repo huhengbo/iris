@@ -8,7 +8,7 @@ from fastapi import APIRouter, Response
 from pydantic import BaseModel, Field
 
 from app.api.browse import ItemCardOut
-from app.api.schemas import Out
+from app.api.schemas import ImageOut, Out
 from app.deps import (
     AdminUser,
     AppClock,
@@ -17,6 +17,7 @@ from app.deps import (
     ReadDb,
 )
 from app.library.browse import BrowseQueries
+from app.library.browse_models import CollectionCover
 from app.library.collections import (
     Collection,
     CollectionDraft,
@@ -47,6 +48,11 @@ class CollectionItemIn(BaseModel):
     item_id: int
 
 
+class CoverIn(BaseModel):
+    # 用哪个成员的海报作封面；为空时恢复默认
+    item_id: int | None = None
+
+
 class CollectionOut(Out):
     id: int
     library_id: int
@@ -60,6 +66,8 @@ class CollectionOut(Out):
     smart_filter: str | None
     # automatic 一直以 0/1 返回，客户端按这个格式解析
     automatic: int
+    # 管理员指定作封面的成员，没有指定时为空
+    cover_item_id: int | None
     created_at: str
     updated_at: str
 
@@ -76,8 +84,29 @@ class CollectionOut(Out):
             sort_mode=collection.sort_mode,
             smart_filter=collection.smart_filter,
             automatic=int(collection.automatic),
+            cover_item_id=collection.cover_item_id,
             created_at=collection.created_at,
             updated_at=collection.updated_at,
+        )
+
+
+class CollectionCardOut(CollectionOut):
+    """用户浏览用：在合集上多带封面和当前用户看得到的成员数。"""
+
+    # 取第一个有海报的成员的海报；没有时为空，客户端显示占位
+    cover: list[ImageOut]
+    # 详情页头图：合集自己的背景图，没有时用成员的
+    backdrop: list[ImageOut]
+    item_count: int
+
+    @classmethod
+    def with_cover(cls, collection: Collection, cover: CollectionCover) -> CollectionCardOut:
+        base = CollectionOut.of(collection)
+        return cls(
+            **base.model_dump(),
+            cover=[ImageOut.model_validate(size) for size in cover.poster],
+            backdrop=[ImageOut.model_validate(size) for size in cover.backdrop],
+            item_count=cover.item_count,
         )
 
 
@@ -105,7 +134,7 @@ class AutoSyncOut(Out):
 
 
 class CollectionDetailOut(Out):
-    collection: CollectionOut
+    collection: CollectionCardOut
     # 和影视墙一样的条目卡片，只含有可用文件的成员
     items: list[ItemCardOut]
 
@@ -155,6 +184,13 @@ def delete_collection(collection_id: int, _: AdminUser, db: Db, clock: AppClock)
     return Response(status_code=204)
 
 
+@router.put("/collections/{collection_id}/cover")
+def set_collection_cover(
+    collection_id: int, body: CoverIn, _: AdminUser, db: Db, clock: AppClock
+) -> CollectionOut:
+    return CollectionOut.of(CollectionRepository(db, clock).set_cover(collection_id, body.item_id))
+
+
 @router.put("/collections/{collection_id}/items")
 def set_collection_items(
     collection_id: int, body: MembersIn, _: AdminUser, db: Db, clock: AppClock
@@ -183,10 +219,10 @@ def remove_collection_item(
 @public_router.get("/libraries/{library_id}/collections")
 def list_collections(
     library_id: int, user: CurrentUser, db: ReadDb, clock: AppClock
-) -> list[CollectionOut]:
-    return [
-        CollectionOut.of(c) for c in CollectionRepository(db, clock).list_visible(library_id, user)
-    ]
+) -> list[CollectionCardOut]:
+    collections = CollectionRepository(db, clock).list_visible(library_id, user)
+    covers = BrowseQueries(db, user).collection_covers([c.id for c in collections])
+    return [CollectionCardOut.with_cover(c, covers[c.id]) for c in collections]
 
 
 @public_router.get("/collections/{collection_id}")
@@ -194,8 +230,10 @@ def get_collection(
     collection_id: int, user: CurrentUser, db: ReadDb, clock: AppClock
 ) -> CollectionDetailOut:
     collection = CollectionRepository(db, clock).require_visible(collection_id, user)
-    cards = BrowseQueries(db, user).collection_cards(collection_id)
+    queries = BrowseQueries(db, user)
+    cards = queries.collection_cards(collection_id)
+    cover = queries.collection_covers([collection_id])[collection_id]
     return CollectionDetailOut(
-        collection=CollectionOut.of(collection),
+        collection=CollectionCardOut.with_cover(collection, cover),
         items=[ItemCardOut.model_validate(card) for card in cards],
     )

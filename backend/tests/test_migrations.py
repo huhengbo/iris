@@ -36,6 +36,7 @@ def test_migrations_are_baseline_then_source_neutral() -> None:
         (2, "source_neutral"),
         (3, "source_busy"),
         (4, "plugin_repositories"),
+        (5, "collection_artwork"),
     ]
 
 
@@ -248,6 +249,7 @@ def test_source_neutral_migration_renames_and_converts_scope_keys(
             (2, "source_neutral"),
             (3, "source_busy"),
             (4, "plugin_repositories"),
+            (5, "collection_artwork"),
         ]
     finally:
         raw.close()
