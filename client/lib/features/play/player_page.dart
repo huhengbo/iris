@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,12 +24,13 @@ import 'play_api.dart';
 
 part 'player_args.dart';
 part 'player_controls.dart';
+part 'player_gestures.dart';
 part 'player_tv_controls.dart';
 part 'player_widgets.dart';
 
 /// 横屏沉浸式播放。触屏：点按显示/隐藏控制条，双击左右快退快进、中间暂停，
-/// 长按 2 倍速，左右滑动拖进度。遥控器/键盘：控制条隐藏时左右快退快进，
-/// 确认键暂停并呼出控制条。
+/// 长按 2 倍速，左右滑动拖进度，左半屏上下滑调亮度、右半屏调音量。
+/// 遥控器/键盘：控制条隐藏时左右快退快进，确认键暂停并呼出控制条。
 class PlayerPage extends ConsumerStatefulWidget {
   const PlayerPage({super.key, required this.args});
 
@@ -171,6 +173,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     _errorTimer?.cancel();
     _toastTimer?.cancel();
     _reportTimer?.cancel();
+    _levelTimer?.cancel();
+    // 亮度只在播放器里生效，出去就跟随系统
+    if (_brightnessChanged) unawaited(PlayerLevels.resetBrightness());
     // 没走 _exit 就被移除时（如切换服务器）也存一次进度
     if (!_exiting) unawaited(_report());
     unawaited(_player.dispose());
@@ -550,25 +555,66 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   Duration _dragFrom = Duration.zero;
   double _dragDx = 0;
 
+  /// 正在横滑拖进度。控制条显示时也在中间提示偏移量
+  bool _seekDragging = false;
+
+  /// 拖到了片头或片尾，触边只震一次
+  bool _dragAtEdge = false;
+
+  /// 竖滑调亮度或音量：起手时的值读到之前 [_levelFrom] 为空，先攒着位移
+  PlayerLevel? _levelKind;
+  double? _levelFrom;
+  double _levelDy = 0;
+  double _levelHeight = 0;
+  ({PlayerLevel kind, double value})? _level;
+  Timer? _levelTimer;
+  bool _brightnessChanged = false;
+
   /// 双击：左侧后退、右侧前进、中间暂停，秒数和中央的按钮一致
   void _onDoubleTap(double width) {
     final seek = doubleTapSeek(_doubleTapAt?.dx ?? width / 2, width);
     unawaited(seek == null ? _togglePlay() : _seekBy(seek));
   }
 
-  void _onDragStart(DragStartDetails _) {
+  bool _inDeadZone(Offset at, Size size) =>
+      inGestureDeadZone(at, size, MediaQuery.systemGestureInsetsOf(context));
+
+  void _onDragStart(DragStartDetails details, Size size) {
     if (_duration <= Duration.zero) return;
+    if (_inDeadZone(details.localPosition, size)) return;
+    _hideTimer?.cancel();
     _dragFrom = _position;
     _dragDx = 0;
-    setState(() => _scrub = _position);
+    _dragAtEdge = false;
+    setState(() {
+      _seekDragging = true;
+      _scrub = _position;
+    });
   }
 
-  /// 划过整个屏幕宽度约等于 2 分钟
+  /// 划满一屏宽度的时长随片长变（[dragSeekSpan]）
   void _onDragUpdate(DragUpdateDetails details, double width) {
-    if (_scrub == null) return;
+    if (!_seekDragging) return;
     _dragDx += details.delta.dx;
-    final delta = Duration(milliseconds: (_dragDx / width * 120000).round());
-    setState(() => _scrub = _clamp(_dragFrom + delta));
+    final target = _dragFrom + dragSeekOffset(_dragDx, width, _duration);
+    final atEdge = target <= Duration.zero || target >= _duration;
+    if (atEdge && !_dragAtEdge) unawaited(HapticFeedback.selectionClick());
+    _dragAtEdge = atEdge;
+    setState(() => _scrub = _clamp(target));
+  }
+
+  /// 划回起点附近（不到 1 秒）松手算取消，不发 seek
+  Future<void> _onSeekDragEnd() async {
+    if (!_seekDragging) return;
+    final target = _scrub;
+    setState(() => _seekDragging = false);
+    if (_controls) _scheduleHide();
+    if (target == null) return;
+    if ((target - _dragFrom).abs() < const Duration(seconds: 1)) {
+      setState(() => _scrub = null);
+      return;
+    }
+    await _onDragEnd();
   }
 
   Future<void> _onDragEnd() async {
@@ -576,6 +622,64 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     if (target == null) return;
     setState(() => _scrub = null);
     await _player.seek(target);
+  }
+
+  /// 左半屏亮度、右半屏音量。电视没有触屏；非安卓没有亮度，音量调播放器自己的
+  void _onLevelStart(DragStartDetails details, Size size) {
+    if (_tv || _inDeadZone(details.localPosition, size)) return;
+    final kind = levelSideAt(details.localPosition.dx, size.width);
+    if (kind == PlayerLevel.brightness && !PlayerLevels.native) return;
+    _levelTimer?.cancel();
+    _levelKind = kind;
+    _levelFrom = null;
+    _levelDy = 0;
+    _levelHeight = size.height;
+    unawaited(
+      _readLevel(kind).then((value) {
+        if (_levelKind != kind || !mounted) return;
+        if (value == null) {
+          _levelKind = null;
+          return;
+        }
+        _levelFrom = value;
+        _applyLevel();
+      }),
+    );
+  }
+
+  Future<double?> _readLevel(PlayerLevel kind) async {
+    if (PlayerLevels.native) return PlayerLevels.read(kind);
+    return (_player.state.volume / 100).clamp(0.0, 1.0);
+  }
+
+  void _onLevelUpdate(DragUpdateDetails details) {
+    if (_levelKind == null) return;
+    _levelDy += details.delta.dy;
+    _applyLevel();
+  }
+
+  void _applyLevel() {
+    final kind = _levelKind;
+    final from = _levelFrom;
+    if (kind == null || from == null) return;
+    final value = levelAfterDrag(from, _levelDy, _levelHeight);
+    if (_level?.value == value && _level?.kind == kind) return;
+    setState(() => _level = (kind: kind, value: value));
+    if (kind == PlayerLevel.brightness) _brightnessChanged = true;
+    if (PlayerLevels.native) {
+      unawaited(PlayerLevels.write(kind, value));
+    } else {
+      unawaited(_player.setVolume(value * 100));
+    }
+  }
+
+  void _onLevelEnd() {
+    if (_levelKind == null) return;
+    _levelKind = null;
+    _levelTimer?.cancel();
+    _levelTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _level = null);
+    });
   }
 
   void _onLongPressStart() {
@@ -679,6 +783,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           child: LayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.maxWidth;
+              final size = constraints.biggest;
               return Stack(
                 fit: StackFit.expand,
                 children: [
@@ -698,10 +803,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     onDoubleTap: () => _onDoubleTap(width),
                     onLongPressStart: (_) => _onLongPressStart(),
                     onLongPressEnd: (_) => _onLongPressEnd(),
-                    onHorizontalDragStart: _onDragStart,
+                    onHorizontalDragStart: (d) => _onDragStart(d, size),
                     onHorizontalDragUpdate: (d) => _onDragUpdate(d, width),
-                    onHorizontalDragEnd: (_) => _onDragEnd(),
-                    onHorizontalDragCancel: _onDragEnd,
+                    onHorizontalDragEnd: (_) => _onSeekDragEnd(),
+                    onHorizontalDragCancel: _onSeekDragEnd,
+                    onVerticalDragStart: (d) => _onLevelStart(d, size),
+                    onVerticalDragUpdate: _onLevelUpdate,
+                    onVerticalDragEnd: (_) => _onLevelEnd(),
+                    onVerticalDragCancel: _onLevelEnd,
                   ),
                   // 控制层显示时缓冲的小圈在播放按钮里，收起后单独放在屏幕中间
                   if (_buffering && !_controls && _error == null)
@@ -753,24 +862,40 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     );
   }
 
-  /// 屏幕中间的临时提示：滑动拖进度、2 倍速、快进快退
+  /// 屏幕中间的临时提示：滑动拖进度、调亮度音量、2 倍速、快进快退
   Widget _centerLabel() {
     final scrub = _scrub;
+    final level = _level;
     final String? text;
-    if (scrub != null && !_controls) {
+    if (scrub != null && _seekDragging) {
+      text =
+          '${formatSeekOffset(scrub - _dragFrom)} · '
+          '${formatClock(scrub)} / ${formatClock(_duration)}';
+    } else if (scrub != null && !_controls) {
       text = '${formatClock(scrub)} / ${formatClock(_duration)}';
     } else if (_boost) {
       text = '2× 快进中';
     } else {
       text = _toast;
     }
+    final Widget? content = level != null
+        ? _LevelIndicator(level: level.kind, value: level.value)
+        : text != null
+        ? Text(
+            text,
+            style: Theme.of(context).textTheme.titleSmall!.copyWith(
+              color: CinemaColors.text0,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          )
+        : null;
     return IgnorePointer(
       child: Align(
         alignment: const Alignment(0, -0.55),
         child: AnimatedOpacity(
-          opacity: text == null ? 0 : 1,
+          opacity: content == null ? 0 : 1,
           duration: Motion.short,
-          child: text == null
+          child: content == null
               ? const SizedBox.shrink()
               : DecoratedBox(
                   decoration: BoxDecoration(
@@ -782,13 +907,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                       horizontal: 16,
                       vertical: 8,
                     ),
-                    child: Text(
-                      text,
-                      style: Theme.of(context).textTheme.titleSmall!.copyWith(
-                        color: CinemaColors.text0,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
+                    child: content,
                   ),
                 ),
         ),
