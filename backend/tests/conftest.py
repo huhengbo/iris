@@ -14,6 +14,7 @@ from app.config import AppConfig
 from app.main import create_app
 from app.plugins.fetch import SafeFetcher
 from app.plugins.installer import DependencyInstaller
+from tests.fake_ai import FakeAi
 from tests.fake_cloud115 import FakeCloud115
 from tests.fake_tmdb import FakeTmdb
 from tests.plugin_env import (
@@ -119,6 +120,11 @@ def sync_runner(clock: FakeClock) -> SyncRunner:
     return SyncRunner(clock)
 
 
+@pytest.fixture
+def fake_ai() -> FakeAi:
+    return FakeAi()
+
+
 def make_app(
     config: AppConfig,
     clock: FakeClock,
@@ -126,6 +132,7 @@ def make_app(
     *,
     plugin_installer: DependencyInstaller | None = None,
     plugin_fetcher: SafeFetcher | None = None,
+    ai: FakeAi | None = None,
 ) -> FastAPI:
     """测试不启动后台线程；插件仍然从 config.plugins_dir 以真实子进程运行。"""
     return create_app(
@@ -137,6 +144,7 @@ def make_app(
         background_tasks=False,
         plugin_installer=plugin_installer,
         plugin_fetcher=plugin_fetcher,
+        ai_client_factory=(ai or FakeAi()).factory,
     )
 
 
@@ -146,8 +154,9 @@ def client(
     clock: FakeClock,
     sync_runner: SyncRunner,
     plugin_env: PluginEnvironment,
+    fake_ai: FakeAi,
 ) -> Iterator[TestClient]:
-    with TestClient(make_app(config, clock, sync_runner)) as test_client:
+    with TestClient(make_app(config, clock, sync_runner, ai=fake_ai)) as test_client:
         bind_controls(plugin_env.root, test_client)
         yield test_client
 

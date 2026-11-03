@@ -18,6 +18,7 @@ from app.library.browse_models import (
     CategorySummary,
     CollectionCover,
     CreditRole,
+    DiscoverFilters,
     Episode,
     EpisodeRef,
     Home,
@@ -272,6 +273,93 @@ class BrowseQueries:
             (*args, limit, offset),
         ).fetchall()
         return Page(self._cards(rows), total)
+
+    # ---- 按条件找片 ----
+
+    def discover(self, filters: DiscoverFilters, offset: int, limit: int) -> Page[ItemCard]:
+        """按条件筛选，评分高的在前；评分相同时新的在前。"""
+        where, args = self._discover_where(filters)
+        total = self._db.execute(
+            f"SELECT COUNT(*) FROM media_item m WHERE {where}", args
+        ).fetchone()[0]
+        rows = self._db.execute(
+            f"{CARD_SELECT} WHERE {where} "
+            "ORDER BY m.rating DESC NULLS LAST, m.year DESC NULLS LAST, m.id DESC LIMIT ? OFFSET ?",
+            (*args, limit, offset),
+        ).fetchall()
+        return Page(self._cards(rows), total)
+
+    def accept(self, filters: DiscoverFilters, item_ids: Sequence[int]) -> list[int]:
+        """item_ids 里满足条件且在可见范围内的，保持原有顺序。"""
+        if not item_ids:
+            return []
+        where, args = self._discover_where(filters)
+        marks = ", ".join("?" for _ in item_ids)
+        rows = self._db.execute(
+            f"SELECT m.id FROM media_item m WHERE {where} AND m.id IN ({marks})",
+            (*args, *item_ids),
+        ).fetchall()
+        allowed = {row["id"] for row in rows}
+        return [item_id for item_id in item_ids if item_id in allowed]
+
+    def watched_items(self, limit: int) -> list[ItemCard]:
+        """当前用户看完的条目，最近看的在前。"""
+        rows = self._db.execute(
+            f"{CARD_SELECT} WHERE {self._scope} AND {PLAYABLE} AND {WATCHED} "
+            "ORDER BY (SELECT MAX(s.last_played_at) FROM playback_state s "
+            "JOIN playable p ON p.id = s.playable_id "
+            "WHERE s.user_id = ? AND p.media_item_id = m.id) DESC NULLS LAST, m.id DESC LIMIT ?",
+            (*self._library_ids, self._user_id, self._user_id, limit),
+        ).fetchall()
+        return self._cards(rows)
+
+    def recent_plays(self) -> list[RecentPlay]:
+        """最近播放过的条目（剧集带最近播放的那一集和续播位置），最近的在前。"""
+        return self._recent()
+
+    def cards(self, item_ids: Sequence[int]) -> list[ItemCard]:
+        """可见范围内的条目卡片，顺序同 item_ids；范围外和不存在的跳过。"""
+        if not item_ids:
+            return []
+        marks = ", ".join("?" for _ in item_ids)
+        rows = self._db.execute(
+            f"{CARD_SELECT} WHERE {self._scope} AND {PLAYABLE} AND m.id IN ({marks})",
+            (*self._library_ids, *item_ids),
+        ).fetchall()
+        by_id = {card.id: card for card in self._cards(rows)}
+        return [by_id[item_id] for item_id in item_ids if item_id in by_id]
+
+    def _discover_where(self, filters: DiscoverFilters) -> tuple[str, list[object]]:
+        conditions = [self._scope, PLAYABLE]
+        args: list[object] = list(self._library_ids)
+        if filters.kind is not None:
+            conditions.append("m.kind = ?")
+            args.append(filters.kind)
+        if filters.library_id is not None:
+            conditions.append("m.library_id = ?")
+            args.append(filters.library_id)
+        if filters.genres:
+            marks = ", ".join("?" for _ in filters.genres)
+            conditions.append(
+                f"EXISTS (SELECT 1 FROM json_each(m.genres) WHERE value IN ({marks}))"
+            )
+            args.extend(filters.genres)
+        if filters.year_from is not None:
+            conditions.append("m.year >= ?")
+            args.append(filters.year_from)
+        if filters.year_to is not None:
+            conditions.append("m.year <= ?")
+            args.append(filters.year_to)
+        if filters.min_rating is not None:
+            conditions.append("m.rating >= ?")
+            args.append(filters.min_rating)
+        if filters.max_runtime is not None:
+            conditions.append("m.runtime IS NOT NULL AND m.runtime <= ?")
+            args.append(filters.max_runtime)
+        if filters.watched is not None:
+            conditions.append(WATCHED if filters.watched else f"NOT {WATCHED}")
+            args.append(self._user_id)
+        return " AND ".join(conditions), args
 
     # ---- 首页 ----
 

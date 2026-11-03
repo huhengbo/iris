@@ -113,6 +113,9 @@ def _run_one(
         elif key == "cleanup_play_events":
             with database.session() as connection:
                 result["deleted_events"] = Cleanup(connection, clock).old_play_events()
+        elif key == "cleanup_ai_chats":
+            with database.session() as connection:
+                result["deleted_chats"] = Cleanup(connection, clock).old_ai_chats()
         elif key == "refresh_metadata":
             with database.session() as connection:
                 stale = connection.execute(

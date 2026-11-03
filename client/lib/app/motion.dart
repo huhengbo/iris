@@ -10,6 +10,10 @@ abstract final class Motion {
   static const medium = Duration(milliseconds: 320);
   static const long = Duration(milliseconds: 450);
 
+  /// AI 等待指示：光圈叶片在半开和全开之间开合的一个完整周期（开再合），
+  /// 和骨架屏微光同周期，往返都用 [emphasized]。
+  static const breath = Duration(milliseconds: 1600);
+
   /// 快出慢停，用于页面、弹层和共享元素。
   static const emphasized = Cubic(0.32, 0.72, 0, 1);
 

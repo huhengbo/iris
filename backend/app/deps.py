@@ -6,6 +6,14 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from app.ai.actions import PendingActions
+from app.ai.ask import AskSearch
+from app.ai.chat import ChatService
+from app.ai.semantic import SemanticIndex
+from app.ai.service import AiService
+from app.ai.settings import AiSettings
+from app.ai.suggestions import SuggestionService
+from app.ai.tools import ToolRegistry
 from app.auth.sessions import SessionService, Unauthorized
 from app.auth.throttle import LoginThrottle
 from app.auth.tokens import TokenSigner
@@ -67,6 +75,38 @@ def get_clock(container: Container) -> Clock:
 
 def get_settings(container: Container) -> SettingsService:
     return container.settings
+
+
+def get_ai(container: Container) -> AiService:
+    return container.ai
+
+
+def get_tools(container: Container) -> ToolRegistry:
+    return container.tools
+
+
+def get_ai_settings(container: Container) -> AiSettings:
+    return container.ai_settings
+
+
+def get_suggestions(container: Container) -> SuggestionService:
+    return container.suggestions
+
+
+def get_semantic(container: Container) -> SemanticIndex:
+    return container.semantic
+
+
+def get_ask(container: Container) -> AskSearch:
+    return container.ask
+
+
+def get_chat(container: Container) -> ChatService:
+    return container.chat
+
+
+def get_actions(container: Container) -> PendingActions:
+    return container.actions
 
 
 def get_curation(container: Container) -> Curation:
@@ -152,6 +192,14 @@ ReadDb = Annotated[sqlite3.Connection, Depends(get_read_db, scope="function")]
 AppClock = Annotated[Clock, Depends(get_clock)]
 AppDatabase = Annotated[Database, Depends(get_database)]
 Settings = Annotated[SettingsService, Depends(get_settings)]
+Ai = Annotated[AiService, Depends(get_ai)]
+Tools = Annotated[ToolRegistry, Depends(get_tools)]
+AiConfig = Annotated[AiSettings, Depends(get_ai_settings)]
+Suggestions = Annotated[SuggestionService, Depends(get_suggestions)]
+Semantic = Annotated[SemanticIndex, Depends(get_semantic)]
+Ask = Annotated[AskSearch, Depends(get_ask)]
+Chats = Annotated[ChatService, Depends(get_chat)]
+Actions = Annotated[PendingActions, Depends(get_actions)]
 AppCuration = Annotated[Curation, Depends(get_curation)]
 Playback = Annotated[PlaybackService, Depends(get_playback)]
 OnlineSubtitlesDep = Annotated[OnlineSubtitles, Depends(get_online_subtitles)]

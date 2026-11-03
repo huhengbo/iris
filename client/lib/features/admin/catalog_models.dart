@@ -113,6 +113,7 @@ class PendingWork {
     this.reason,
     required this.candidates,
     required this.fileCount,
+    this.suggestion,
   });
 
   factory PendingWork.fromJson(Map<String, dynamic> json) => PendingWork(
@@ -129,6 +130,9 @@ class PendingWork {
         MetadataCandidate.fromJson(item as Map<String, dynamic>),
     ],
     fileCount: json['file_count'] as int,
+    suggestion: json['suggestion'] == null
+        ? null
+        : AiSuggestion.fromJson(json['suggestion'] as Map<String, dynamic>),
   );
 
   final int id;
@@ -145,6 +149,101 @@ class PendingWork {
   final String? reason;
   final List<MetadataCandidate> candidates;
   final int fileCount;
+
+  /// 后台任务模型给出的匹配建议；还没分析过（或没有配置 AI）时为 null
+  final AiSuggestion? suggestion;
+}
+
+/// AI 匹配建议里模型调用的一步工具。
+class AiSuggestionStep {
+  const AiSuggestionStep({
+    required this.tool,
+    required this.label,
+    required this.summary,
+    required this.ok,
+  });
+
+  factory AiSuggestionStep.fromJson(Map<String, dynamic> json) =>
+      AiSuggestionStep(
+        tool: json['tool'] as String,
+        label: json['label'] as String,
+        summary: json['summary'] as String,
+        ok: json['ok'] as bool,
+      );
+
+  final String tool;
+
+  /// 进行中的人话文案
+  final String label;
+
+  /// 完成后的一句话结果
+  final String summary;
+  final bool ok;
+}
+
+/// 后台任务模型为一个未匹配作品给出的匹配建议（ADR 0030）。
+class AiSuggestion {
+  const AiSuggestion({
+    required this.id,
+    this.providerId,
+    this.remoteId,
+    this.title,
+    this.originalTitle,
+    this.year,
+    this.url,
+    required this.confidence,
+    required this.reason,
+    required this.steps,
+    required this.model,
+    required this.status,
+    required this.createdAt,
+  });
+
+  factory AiSuggestion.fromJson(Map<String, dynamic> json) => AiSuggestion(
+    id: json['id'] as int,
+    providerId: json['provider_id'] as String?,
+    remoteId: json['remote_id'] as String?,
+    title: json['title'] as String?,
+    originalTitle: json['original_title'] as String?,
+    year: json['year'] as int?,
+    url: json['url'] as String?,
+    confidence: (json['confidence'] as num).toDouble(),
+    reason: json['reason'] as String,
+    steps: [
+      for (final step in json['steps'] as List<dynamic>)
+        AiSuggestionStep.fromJson(step as Map<String, dynamic>),
+    ],
+    model: json['model'] as String,
+    status: json['status'] as String,
+    createdAt: DateTime.parse(json['created_at'] as String),
+  );
+
+  final int id;
+  final String? providerId;
+
+  /// 没有候选（模型查过但没有把握）时为 null
+  final String? remoteId;
+  final String? title;
+  final String? originalTitle;
+  final int? year;
+  final String? url;
+
+  /// 模型自评的把握，0 到 1
+  final double confidence;
+  final String reason;
+  final List<AiSuggestionStep> steps;
+  final String model;
+
+  /// pending 待处理；adopted 已采用；ignored 已忽略；auto_matched AI 已自动匹配；
+  /// reverted 自动匹配已撤销
+  final String status;
+  final DateTime createdAt;
+
+  /// 有候选并且还没处理，可以采用。
+  bool get adoptable => status == 'pending' && remoteId != null;
+
+  /// 「片名（年份）」
+  String get label => [title ?? '', if (year != null) '（$year）'].join();
 }
 
 /// 没有归入任何条目的视频，或被识别为附加内容而忽略的视频。
@@ -255,12 +354,18 @@ class AdminItem {
 }
 
 class ItemWork {
-  const ItemWork({required this.id, required this.path, required this.manual});
+  const ItemWork({
+    required this.id,
+    required this.path,
+    required this.manual,
+    this.aiMatched = false,
+  });
 
   factory ItemWork.fromJson(Map<String, dynamic> json) => ItemWork(
     id: json['id'] as int,
     path: json['path'] as String,
     manual: json['manual'] as bool,
+    aiMatched: json['ai_matched'] as bool? ?? false,
   );
 
   final int id;
@@ -268,6 +373,9 @@ class ItemWork {
 
   /// 手动指定的作品，同步不会改动它的匹配结果
   final bool manual;
+
+  /// AI 自动匹配的结果，可以撤销
+  final bool aiMatched;
 }
 
 class ItemVersion {

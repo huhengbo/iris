@@ -16,6 +16,7 @@
   - 提供 Emby 兼容接口，Infuse 等第三方客户端可以直接连接。
 - **WebDAV**：用同一个账号在 Infuse 等播放器里以 WebDAV 方式浏览片库，只读，可见范围同样按资料库分配。
 - **多用户**：账号由管理员创建，普通用户只能看到分配给自己的资料库。
+- **AI 助手（可选）**：管理员配置自己的模型（DeepSeek、硅基流动、Claude、OpenAI 或本地 Ollama）后，同步时无法识别的作品会得到匹配建议，可选自动匹配；所有人可以用一句话找片，或在对话里追问。没有配置时界面里没有任何 AI 入口（ADR 0030）。
 - **插件**：资源来源、元数据（TMDB、豆瓣）、图片（Fanart.tv）、在线字幕（assrt）都是插件，内置在 `plugins/`。
 
 > [!IMPORTANT]
@@ -66,7 +67,7 @@ Web 客户端截图（Android App 和 TV 共用同一套界面代码）。
 
 | 路径 | 内容 |
 |---|---|
-| `backend/` | Python 3.13 后端：`app/` 源码（`api/` 路由，管理接口在 `api/admin/`；`sync/` 同步；`library/` 识别、刮削与浏览；`playback/` 播放签发与跳转；`auth/` 用户与会话；`ops/` 备份、维护、告警和 webhook；`plugins/` 插件运行时：发现、RPC、supervisor 和 provider 代理），`tests/` 测试 |
+| `backend/` | Python 3.13 后端：`app/` 源码（`api/` 路由，管理接口在 `api/admin/`；`sync/` 同步；`library/` 识别、刮削与浏览；`playback/` 播放签发与跳转；`auth/` 用户与会话；`ops/` 备份、维护、告警和 webhook；`ai/` AI 助手（模型接入、工具与审批、匹配建议、语义索引、对话）；`plugins/` 插件运行时：发现、RPC、supervisor 和 provider 代理），`tests/` 测试 |
 | `packages/iris-plugin-sdk/` | 进程外插件公共 SDK：协议类型、manifest、codec、运行时和资源契约测试 |
 | `plugins/` | 内置插件包（115 网盘、本地存储、TMDB、豆瓣、Fanart.tv、assrt），每个插件有自己的 `pyproject.toml`、`plugin.json` 和 `.venv` |
 | `client/` | Flutter 客户端（Android、Android TV、Web 共用），`lib/features/` 按功能划分 |

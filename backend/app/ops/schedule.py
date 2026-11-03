@@ -112,6 +112,8 @@ class ScheduledTaskRunner:
             result["deleted_sessions"] = cleanup.expired_sessions()
         elif key == "cleanup_play_events":
             result["deleted_events"] = cleanup.old_play_events()
+        elif key == "cleanup_ai_chats":
+            result["deleted_chats"] = cleanup.old_ai_chats()
         elif key == "empty_recycle_bin":
             result["deleted_files"] = cleanup.missing_files()
         else:

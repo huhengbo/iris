@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import sqlite3
@@ -18,6 +19,7 @@ SQLITE_BUSY_TIMEOUT_MS = 60_000
 # 释放失败后锁会永远留在一个空闲线程手里，之后所有写请求都挂死）。
 # 代价是不可重入：写会话里不要再开写会话，等锁最多等 busy_timeout，超时报错而不是挂死。
 _SESSION_LOCK = threading.Lock()
+logger = logging.getLogger(__name__)
 _MIGRATION_NAME = re.compile(r"^(\d{4})_([a-z0-9_]+)\.sql$")
 
 
@@ -31,6 +33,34 @@ class Migration:
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = path
+        # sqlite-vec 能否加载：None 还没试过，False 加载失败（之后不再尝试）
+        self._vector_loadable: bool | None = None
+
+    def vector_available(self) -> bool:
+        """sqlite-vec 扩展能否加载。语义索引和语义召回依赖它，不可用时其他功能不受影响。"""
+        if self._vector_loadable is None:
+            connection = sqlite3.connect(":memory:")
+            try:
+                self._load_vector(connection)
+            finally:
+                connection.close()
+        return bool(self._vector_loadable)
+
+    def _load_vector(self, connection: sqlite3.Connection) -> None:
+        if self._vector_loadable is False:
+            raise sqlite3.OperationalError("sqlite-vec 不可用")
+        try:
+            import sqlite_vec
+
+            connection.enable_load_extension(True)
+            sqlite_vec.load(connection)
+            connection.enable_load_extension(False)
+        except (ImportError, AttributeError, OSError, sqlite3.Error) as error:
+            if self._vector_loadable is None:
+                logger.warning("sqlite-vec 加载失败，语义召回不可用：%s", error)
+            self._vector_loadable = False
+            raise sqlite3.OperationalError("sqlite-vec 不可用") from error
+        self._vector_loadable = True
 
     def connect(self) -> sqlite3.Connection:
         return self._connect(configure_wal=True)
@@ -57,13 +87,17 @@ class Database:
             _SESSION_LOCK.release()
 
     @contextmanager
-    def session(self) -> Iterator[sqlite3.Connection]:
-        """一次工作单元：正常结束提交，异常回滚，最后关闭连接。"""
+    def session(self, *, vector: bool = False) -> Iterator[sqlite3.Connection]:
+        """一次工作单元：正常结束提交，异常回滚，最后关闭连接。
+
+        vector 为 True 时加载 sqlite-vec，才能读写 item_vec；加载失败抛出 OperationalError。"""
         # SQLite 同一进程同时只能有一个写事务；同步线程和管理请求并发时，
         # 统一排队比让某个阶段在 busy_timeout 后失败更可靠。
         with self._write_lock():
             connection = self.connect()
             try:
+                if vector:
+                    self._load_vector(connection)
                 connection.execute("BEGIN")
                 yield connection
                 connection.execute("COMMIT")
@@ -74,10 +108,12 @@ class Database:
                 connection.close()
 
     @contextmanager
-    def read_session(self) -> Iterator[sqlite3.Connection]:
-        """只读事务不占用写事务锁，适合浏览接口的多次一致读取。"""
+    def read_session(self, *, vector: bool = False) -> Iterator[sqlite3.Connection]:
+        """只读事务不占用写事务锁，适合浏览接口的多次一致读取。vector 同 session。"""
         connection = self._connect(configure_wal=False)
         try:
+            if vector:
+                self._load_vector(connection)
             # 读会话不该写：误用时立刻报错，而不是悄悄绕开写锁
             connection.execute("PRAGMA query_only = ON")
             connection.execute("BEGIN")

@@ -13,7 +13,7 @@ from app.api.admin.pending_models import (
     MediaFileIdsRequest,
     RematchWorkBatchRequest,
 )
-from app.deps import AdminUser, AppClock, AppCuration, AppDatabase
+from app.deps import AdminUser, AppClock, AppCuration, AppDatabase, Suggestions
 from app.errors import AppError
 from app.ops.tasks import BackgroundTask, TaskRepository, TaskStatus
 
@@ -51,6 +51,53 @@ def assign_works_batch(
                 break
             try:
                 item_id = curation.assign_work(work_id, body.remote_id, body.provider_id)
+            except AppError as error:
+                results.append(
+                    BatchAssignmentResult(
+                        id=work_id,
+                        error=BatchItemError(code=error.code, message=error.message),
+                    )
+                )
+            else:
+                results.append(BatchAssignmentResult(id=work_id, item_id=item_id))
+            _progress_task(database, clock, task.id, index)
+    except Exception as error:
+        _fail_task(database, clock, task.id, str(error))
+        raise
+    return _finish_batch(
+        database,
+        clock,
+        task,
+        results,
+        requested=len(body.work_ids),
+        unprocessed=len(body.work_ids) - len(results),
+    )
+
+
+@router.post("/works/batch-adopt-suggestions")
+def adopt_suggestions_batch(
+    body: RematchWorkBatchRequest,
+    admin: AdminUser,
+    suggestions: Suggestions,
+    database: AppDatabase,
+    clock: AppClock,
+) -> BatchAssignmentOut:
+    """批量采用 AI 的匹配建议，每个作品用自己的建议；没有候选或已处理过的作品报告为失败。"""
+    task = _start_task(
+        database,
+        clock,
+        "batch_adopt_suggestion",
+        len(body.work_ids),
+        admin.id,
+        {"work_ids": body.work_ids},
+    )
+    results: list[BatchAssignmentResult] = []
+    try:
+        for index, work_id in enumerate(body.work_ids, 1):
+            if _task_cancelled(database, clock, task.id):
+                break
+            try:
+                item_id = suggestions.adopt(work_id)
             except AppError as error:
                 results.append(
                     BatchAssignmentResult(

@@ -1,4 +1,6 @@
+import 'package:iris/app/theme.dart';
 import 'package:iris/core/api/api_error.dart';
+import 'package:iris/core/providers.dart';
 import 'package:iris/core/server.dart';
 import 'package:iris/features/admin/catalog_api.dart';
 import 'package:iris/features/admin/item_admin_page.dart';
@@ -6,6 +8,7 @@ import 'package:iris/features/admin/pending_page.dart';
 import 'package:iris/features/admin/settings_page.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fake_api.dart';
@@ -56,7 +59,41 @@ Map<String, dynamic> _batchReport({int succeeded = 1, int failed = 0}) => {
   ],
 };
 
-Map<String, dynamic> _work() => {
+Map<String, dynamic> _suggestion({
+  String? remoteId = '1001',
+  String status = 'pending',
+  double confidence = 0.87,
+  String reason = '片名一致，年份相同，主演对得上',
+}) => {
+  'id': 41,
+  'provider_id': remoteId == null ? null : 'builtin.tmdb',
+  'remote_id': remoteId,
+  'title': remoteId == null ? null : '奇怪的片名',
+  'original_title': remoteId == null ? null : 'Strange Title',
+  'year': remoteId == null ? null : 2021,
+  'url': null,
+  'confidence': confidence,
+  'reason': reason,
+  'steps': [
+    {
+      'tool': 'metadata_search',
+      'label': '正在搜索「Strange Title」…',
+      'summary': '搜索「Strange Title」：2 个结果',
+      'ok': true,
+    },
+    {
+      'tool': 'metadata_details',
+      'label': '正在查看条目详情…',
+      'summary': '查看「奇怪的片名」的详情',
+      'ok': true,
+    },
+  ],
+  'model': 'deepseek-chat',
+  'status': status,
+  'created_at': '2026-11-03T01:00:00Z',
+};
+
+Map<String, dynamic> _work({Map<String, dynamic>? suggestion}) => {
   'id': 7,
   'library_id': 1,
   'library_name': '电影',
@@ -81,6 +118,7 @@ Map<String, dynamic> _work() => {
   ],
   'file_count': 1,
   'item': null,
+  'suggestion': suggestion,
 };
 
 Map<String, dynamic> _file({String kind = 'series'}) => {
@@ -104,7 +142,10 @@ Map<String, dynamic> _image(String name) => {
   'url': '/api/images/$name',
 };
 
-Map<String, dynamic> _item({List<Map<String, dynamic>>? versions}) => {
+Map<String, dynamic> _item({
+  List<Map<String, dynamic>>? versions,
+  bool aiMatched = false,
+}) => {
   'id': 5,
   'library_id': 1,
   'library_name': '电影',
@@ -129,7 +170,12 @@ Map<String, dynamic> _item({List<Map<String, dynamic>>? versions}) => {
   'logo': <Object>[],
   'scraped_at': '2026-10-01T02:00:00Z',
   'works': [
-    {'id': 3, 'path': '/影视/电影/流浪地球 (2019)', 'manual': true},
+    {
+      'id': 3,
+      'path': '/影视/电影/流浪地球 (2019)',
+      'manual': !aiMatched,
+      'ai_matched': aiMatched,
+    },
   ],
   'versions':
       versions ??
@@ -606,6 +652,227 @@ void main() {
         api.on('GET $_admin/works?state=unmatched&$_page', _pageOf([]));
       });
       expect(find.text('没有未匹配的作品'), findsOneWidget);
+    });
+  });
+
+  group('ai suggestions', () {
+    void lists(
+      FakeAdminApi api, {
+      Map<String, dynamic>? suggestion,
+      bool analysis = false,
+    }) {
+      api.on('GET $_admin/pending', _summary(unmatched: 1));
+      api.on(
+        'GET $_admin/works?state=unmatched&$_page',
+        _pageOf([_work(suggestion: suggestion)]),
+      );
+      api.on('GET $_admin/files?status=unplaced&$_page', _filesPage([]));
+      api.on('GET $_admin/files?status=ignored&$_page', _filesPage([]));
+      if (analysis) {
+        api.on('GET $_admin/ai/roles', {
+          'chat': null,
+          'task': {'provider_id': 1, 'model': 'deepseek-chat'},
+          'embedding': null,
+        });
+        api.on('GET $_admin/ai/settings', {
+          'reversible_write': 'confirm',
+          'suggest_matches': true,
+          'auto_match': false,
+          'auto_match_threshold': 0.9,
+        });
+      }
+    }
+
+    testWidgets('shows the suggestion and adopts it', (tester) async {
+      final api = await pumpAdmin(tester, const PendingPage(), (api) {
+        lists(api, suggestion: _suggestion());
+        api.on('POST $_admin/works/7/suggestion/adopt', _item());
+      });
+
+      expect(find.text('奇怪的片名（2021） · 87%'), findsOneWidget);
+      expect(find.text('片名一致，年份相同，主演对得上'), findsOneWidget);
+      // 步骤默认收起，点开能看到模型查了什么
+      expect(find.text('搜索「Strange Title」：2 个结果'), findsNothing);
+      await tester.tap(find.text('奇怪的片名（2021） · 87%'));
+      await tester.pumpAndSettle();
+      expect(find.text('搜索「Strange Title」：2 个结果'), findsOneWidget);
+
+      await tester.tap(find.bySemanticsLabel('采用 AI 建议 奇怪的片名（2021）'));
+      await tester.pumpAndSettle();
+
+      expect(api.requests, contains('POST $_admin/works/7/suggestion/adopt'));
+      expect(find.text('已指定为「奇怪的片名」'), findsOneWidget);
+    });
+
+    testWidgets('ignore and re-analyze from the menu', (tester) async {
+      final api = await pumpAdmin(tester, const PendingPage(), (api) {
+        lists(api, suggestion: _suggestion());
+        api.on('POST $_admin/works/7/suggestion/ignore', null, status: 204);
+        api.on('POST $_admin/works/7/suggestion/reanalyze', null, status: 204);
+      });
+
+      await tester.tap(find.byTooltip('AI 建议的更多操作'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('忽略'));
+      await tester.pumpAndSettle();
+      expect(api.requests, contains('POST $_admin/works/7/suggestion/ignore'));
+      expect(find.text('已忽略这条 AI 建议'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('AI 建议的更多操作'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('重新分析'));
+      await tester.pumpAndSettle();
+      expect(
+        api.requests,
+        contains('POST $_admin/works/7/suggestion/reanalyze'),
+      );
+    });
+
+    testWidgets('"换一个" opens the manual picker', (tester) async {
+      await pumpAdmin(
+        tester,
+        const PendingPage(),
+        (api) => lists(api, suggestion: _suggestion()),
+      );
+
+      await tester.tap(find.byTooltip('AI 建议的更多操作'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('换一个'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('候选'), findsOneWidget);
+    });
+
+    testWidgets('a suggestion without a candidate cannot be adopted', (
+      tester,
+    ) async {
+      await pumpAdmin(
+        tester,
+        const PendingPage(),
+        (api) => lists(
+          api,
+          suggestion: _suggestion(remoteId: null, reason: '搜不到这个片名'),
+        ),
+      );
+
+      expect(find.text('AI 没有把握'), findsOneWidget);
+      expect(find.text('搜不到这个片名'), findsOneWidget);
+      expect(find.text('采用'), findsNothing);
+    });
+
+    testWidgets('ignored and reverted suggestions offer re-analysis', (
+      tester,
+    ) async {
+      await pumpAdmin(
+        tester,
+        const PendingPage(),
+        (api) => lists(api, suggestion: _suggestion(status: 'reverted')),
+      );
+
+      expect(find.text('已撤销 AI 自动匹配'), findsOneWidget);
+      expect(find.text('重新分析'), findsOneWidget);
+    });
+
+    testWidgets(
+      'a used-up suggestion on an unmatched work only offers re-analysis',
+      (tester) async {
+        await pumpAdmin(
+          tester,
+          const PendingPage(),
+          (api) => lists(api, suggestion: _suggestion(status: 'adopted')),
+        );
+
+        expect(find.textContaining('之前的 AI 建议已用过'), findsOneWidget);
+        expect(find.text('重新分析'), findsOneWidget);
+        expect(find.text('AI 没有把握'), findsNothing);
+        expect(find.text('采用'), findsNothing);
+      },
+    );
+
+    testWidgets('rows waiting for the background task show it is analyzing', (
+      tester,
+    ) async {
+      final api = FakeAdminApi();
+      lists(api, analysis: true);
+      final dio = Dio(BaseOptions(baseUrl: 'http://test'))
+        ..httpClientAdapter = api;
+      tester.view.physicalSize = const Size(390 * 3, 1600 * 3);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(dio),
+            apiBaseUrlProvider.overrideWithValue('http://test'),
+          ],
+          child: MaterialApp(theme: buildTheme(), home: const PendingPage()),
+        ),
+      );
+      // 等待指示是循环动画，不能 pumpAndSettle
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.text('AI 分析中'), findsOneWidget);
+
+      // 关掉页面，停掉等待指示和轮询
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('rows are not marked as analyzing when AI analysis is off', (
+      tester,
+    ) async {
+      await pumpAdmin(tester, const PendingPage(), (api) => lists(api));
+
+      expect(find.text('AI 分析中'), findsNothing);
+    });
+
+    testWidgets('adopts the suggestions of the selected works', (tester) async {
+      final api = await pumpAdmin(tester, const PendingPage(), (api) {
+        lists(api, suggestion: _suggestion());
+        api.on('POST $_admin/works/batch-adopt-suggestions', _batchReport());
+      });
+
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('采用 AI 建议'));
+      await tester.pumpAndSettle();
+
+      expect(api.bodies['POST $_admin/works/batch-adopt-suggestions'], {
+        'work_ids': [7],
+      });
+      expect(find.text('采用 AI 建议完成：成功 1 项'), findsOneWidget);
+    });
+
+    testWidgets('no batch adopt without an adoptable suggestion', (
+      tester,
+    ) async {
+      await pumpAdmin(tester, const PendingPage(), (api) => lists(api));
+
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('采用 AI 建议'), findsNothing);
+    });
+
+    testWidgets('an AI matched work shows the badge and can be reverted', (
+      tester,
+    ) async {
+      final api = await pumpAdmin(tester, const ItemAdminPage(id: 5), (api) {
+        api.on('GET $_admin/items/5', _item(aiMatched: true));
+        api.on('POST $_admin/works/3/suggestion/revert', null, status: 204);
+      });
+
+      expect(find.text('AI'), findsOneWidget);
+      expect(find.text('手动指定'), findsNothing);
+
+      await tester.tap(find.text('撤销 AI 匹配'));
+      await tester.pumpAndSettle();
+      expect(find.text('撤销 AI 匹配？'), findsOneWidget);
+      await tester.tap(find.text('撤销'));
+      await tester.pumpAndSettle();
+
+      expect(api.requests, contains('POST $_admin/works/3/suggestion/revert'));
+      expect(find.text('已撤销，作品回到待处理'), findsOneWidget);
     });
   });
 

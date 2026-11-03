@@ -8,6 +8,7 @@ from anyio import to_thread
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.ai.service import ClientFactory
 from app.api import playback, plugin_ui
 from app.bootstrap import build_container
 from app.clock import Clock
@@ -36,6 +37,7 @@ def create_app(
     background_tasks: bool = True,
     plugin_installer: DependencyInstaller | None = None,
     plugin_fetcher: SafeFetcher | None = None,
+    ai_client_factory: ClientFactory | None = None,
 ) -> FastAPI:
     """background_tasks 控制是否启动定时同步等后台线程，测试里关闭后手动驱动。"""
     container = build_container(
@@ -46,6 +48,7 @@ def create_app(
         delete_executor=delete_executor,
         plugin_installer=plugin_installer,
         plugin_fetcher=plugin_fetcher,
+        ai_client_factory=ai_client_factory,
     )
 
     @asynccontextmanager

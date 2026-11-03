@@ -12,6 +12,7 @@ import '../../core/widgets/async_view.dart';
 import '../../core/widgets/focus_tile.dart';
 import '../../core/widgets/skeleton.dart';
 import '../../core/format.dart';
+import '../ai/ai_entry_button.dart';
 import '../library/art_image.dart';
 import '../library/browse_api.dart';
 import '../library/library_hub_shelf.dart';
@@ -79,6 +80,7 @@ class _HomeTopBar extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
+            const AiEntryButton(),
             IconButton(
               tooltip: '稍后观看',
               onPressed: () => context.push('/watchlist'),

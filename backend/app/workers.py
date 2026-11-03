@@ -8,6 +8,8 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 
+from app.ai.semantic import run_semantic
+from app.ai.suggestions import run_suggestions
 from app.container import AppContainer
 from app.ops.maintenance import run_maintenance
 from app.sync.schedule import run_schedule
@@ -20,6 +22,8 @@ class BackgroundWorkers:
         self._stop = threading.Event()
         self._threads = [
             self._thread("sync-schedule", run_schedule, container.sync_schedule),
+            self._thread("ai-suggestions", run_suggestions, container),
+            self._thread("ai-semantic", run_semantic, container),
             self._thread(
                 "maintenance-schedule",
                 run_maintenance,

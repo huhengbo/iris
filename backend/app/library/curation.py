@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import suppress
 
 from iris_plugin_sdk import MetadataUnavailable
 
@@ -57,6 +58,52 @@ class Curation:
         self._place(folder)
         self._finish(folder.library_id)
         return item_id
+
+    def auto_assign_work(
+        self, work_id: int, remote_id: str, provider_id: str, priority: Priority
+    ) -> int | None:
+        """AI 自动匹配：和规则匹配一样不标记手动。作品已不是未匹配状态时返回 None。"""
+        with self._database.session() as connection:
+            row = connection.execute(
+                "SELECT folder_id FROM work WHERE id = ? AND state = 'unmatched' AND manual = 0",
+                (work_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            folder = CatalogRepository(connection, self._clock).folder(row["folder_id"])
+        item_id = self._metadata.scraper.ensure_item(
+            folder.library_id,
+            folder.kind,
+            self._provider(folder.library_id, provider_id),
+            remote_id,
+            priority,
+        )
+        if not self._metadata.matcher.auto_assign(work_id, item_id):
+            return None
+        self._place(folder)
+        self._finish(folder.library_id)
+        return item_id
+
+    def unassign_auto_match(self, work_id: int) -> None:
+        """撤销自动匹配：作品回到待处理，按规则重新匹配一次，得不到结果就留在未匹配。"""
+        with self._database.session() as connection:
+            row = connection.execute(
+                "SELECT w.state, w.manual, w.folder_id FROM work w WHERE w.id = ?", (work_id,)
+            ).fetchone()
+            if row is None:
+                raise NotFound("作品不存在")
+            if row["state"] != "matched" or row["manual"]:
+                raise AppError(409, "work_not_auto_matched", "只能撤销自动匹配的作品")
+            folder = CatalogRepository(connection, self._clock).folder(row["folder_id"])
+        matcher = self._metadata.matcher
+        matcher.reset([work_id])
+        pending = [w for w in matcher.pending_works([folder.library_id]) if w.id == work_id]
+        if pending:
+            # 元数据来源暂时不可用时留在待匹配，下次同步再试
+            with suppress(MetadataUnavailable):
+                matcher.match(pending[0], _PRIORITY)
+        self._place(folder)
+        self._finish(folder.library_id)
 
     def assign_file(
         self,

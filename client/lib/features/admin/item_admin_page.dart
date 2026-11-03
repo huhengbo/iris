@@ -209,6 +209,24 @@ class _ItemAdminPageState extends ConsumerState<ItemAdminPage> {
     });
   }
 
+  Future<void> _revertAiMatch(ItemWork work) async {
+    if (!await _confirm(
+      '撤销 AI 匹配？',
+      '「${work.path}」会回到待处理，之后不会再自动匹配到这个条目，需要你手动指定。',
+      '撤销',
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    // 条目只靠这个作品存在时，撤销后条目就没有了
+    final onlyWork = (_detail?.works.length ?? 0) <= 1;
+    final ok = await _run('撤销 AI 匹配', reload: !onlyWork, () async {
+      await revertSuggestion(ref.read(apiClientProvider), work.id);
+      return '已撤销，作品回到待处理';
+    });
+    if (ok && onlyWork && mounted) _leave();
+  }
+
   Future<void> _detach(ItemVersion version) async {
     if (!await _confirm(
       '拆出这个版本？',
@@ -287,7 +305,13 @@ class _ItemAdminPageState extends ConsumerState<ItemAdminPage> {
                     ],
                     if (detail.works.isNotEmpty) ...[
                       const SectionTitle('作品目录', inset: false),
-                      for (final work in detail.works) _WorkRow(work: work),
+                      for (final work in detail.works)
+                        _WorkRow(
+                          work: work,
+                          onRevert: _busy == null
+                              ? () => _revertAiMatch(work)
+                              : null,
+                        ),
                     ],
                     SectionTitle('版本 ${detail.versions.length}', inset: false),
                     for (final version in detail.versions)

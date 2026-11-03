@@ -8,6 +8,10 @@ class _WorkTile extends StatelessWidget {
     required this.onSelected,
     required this.onPick,
     required this.onDelete,
+    required this.analyzing,
+    required this.onAdopt,
+    required this.onIgnore,
+    required this.onReanalyze,
   });
 
   final PendingWork work;
@@ -16,6 +20,12 @@ class _WorkTile extends StatelessWidget {
   final ValueChanged<bool> onSelected;
   final VoidCallback onPick;
   final ValueChanged<String> onDelete;
+
+  /// 后台任务会为这个作品生成 AI 建议（已配置后台任务模型）
+  final bool analyzing;
+  final VoidCallback onAdopt;
+  final VoidCallback onIgnore;
+  final VoidCallback onReanalyze;
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +46,16 @@ class _WorkTile extends StatelessWidget {
           style: muted,
         ),
         if (work.reason != null) Text(work.reason!, style: text.bodyMedium),
+        _SuggestionLine(
+          key: ValueKey(work.id),
+          work: work,
+          analyzing: analyzing,
+          busy: busy,
+          onAdopt: onAdopt,
+          onPickOther: onPick,
+          onIgnore: onIgnore,
+          onReanalyze: onReanalyze,
+        ),
       ],
       action: '指定',
       busy: busy,

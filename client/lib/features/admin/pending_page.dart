@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/motion.dart';
 import '../../app/theme.dart';
 import '../../core/api/api_error.dart';
 import '../../core/providers.dart';
+import '../../core/widgets/ai_wait_indicator.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/confirm_dialog.dart';
 import '../../core/widgets/empty_state.dart';
@@ -17,6 +21,7 @@ import 'tasks_api.dart';
 import 'metadata_picker.dart';
 
 part 'pending_rows.dart';
+part 'pending_suggestion.dart';
 part 'pending_files_tab.dart';
 
 /// 管理后台的待处理页：没匹配上的作品、没归入条目的视频和被忽略的附加内容，逐个手动指定。
@@ -242,6 +247,92 @@ class _WorksTabState extends ConsumerState<_WorksTab>
   final Set<int> selected = {};
   bool batchBusy = false;
 
+  /// 有作品在等 AI 分析时定时刷新列表，建议出来就显示
+  Timer? _poll;
+  static const _pollEvery = Duration(seconds: 8);
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  void _syncPolling(bool needed) {
+    if (needed && _poll == null) {
+      _poll = Timer.periodic(_pollEvery, (_) {
+        if (!mounted) return;
+        ref
+          ..invalidate(unmatchedWorksProvider)
+          ..invalidate(pendingSummaryProvider);
+      });
+    } else if (!needed && _poll != null) {
+      _poll!.cancel();
+      _poll = null;
+    }
+  }
+
+  Future<void> _adopt(PendingWork work) async {
+    final suggestion = work.suggestion;
+    if (suggestion == null) return;
+    await runBusy(
+      work.id,
+      () => _assign(
+        context,
+        ref,
+        MetadataPick(
+          providerId: suggestion.providerId,
+          remoteId: suggestion.remoteId ?? '',
+          title: suggestion.title ?? '',
+        ),
+        () => adoptSuggestion(ref.read(apiClientProvider), work.id),
+      ),
+    );
+  }
+
+  Future<void> _suggestionAction(
+    PendingWork work,
+    Future<void> Function() call,
+    String done,
+  ) => runBusy(work.id, () async {
+    try {
+      await call();
+      ref.invalidate(unmatchedWorksProvider);
+      if (mounted) showSnack(context, done);
+    } catch (e) {
+      if (mounted) showApiErrorSnack(context, e);
+    }
+  });
+
+  Future<void> _adoptBatch(List<PendingWork> works) async {
+    if (works.isEmpty) return;
+    setState(() => batchBusy = true);
+    try {
+      final report = await adoptSuggestionsBatch(
+        ref.read(apiClientProvider),
+        works.map((work) => work.id).toList(),
+      );
+      _invalidatePending(ref);
+      if (mounted) {
+        setState(() {
+          batchBusy = false;
+          selected
+            ..clear()
+            ..addAll(
+              report.results
+                  .where((result) => !result.succeeded)
+                  .map((result) => result.id),
+            );
+        });
+        _showBatchReport(context, report, action: '采用 AI 建议');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => batchBusy = false);
+        showApiErrorSnack(context, e);
+      }
+    }
+  }
+
   Future<void> _pick(PendingWork work) async {
     final pick = await pickMetadata(
       context,
@@ -371,11 +462,16 @@ class _WorksTabState extends ConsumerState<_WorksTab>
   @override
   Widget build(BuildContext context) {
     final provider = unmatchedWorksProvider(offset);
+    final analysis = ref.watch(aiAnalysisEnabledProvider).value ?? false;
     return AsyncView(
       value: ref.watch(provider),
       onRetry: () => ref.invalidate(provider),
       builder: (page) {
         backIfEmpty(page.items.isEmpty);
+        final waiting = analysis && page.items.any((w) => w.suggestion == null);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _syncPolling(waiting);
+        });
         if (page.total == 0) {
           return const EmptyState(
             icon: Icons.check_circle_outline,
@@ -413,6 +509,23 @@ class _WorksTabState extends ConsumerState<_WorksTab>
                 ),
                 onDelete: () =>
                     _deleteBatch(pageIds.where(selected.contains).toList()),
+                onSecondary:
+                    page.items.any(
+                      (w) =>
+                          selected.contains(w.id) &&
+                          w.suggestion?.adoptable == true,
+                    )
+                    ? () => _adoptBatch(
+                        page.items
+                            .where(
+                              (w) =>
+                                  selected.contains(w.id) &&
+                                  w.suggestion?.adoptable == true,
+                            )
+                            .toList(),
+                      )
+                    : null,
+                secondaryLabel: '采用 AI 建议',
               ),
             Expanded(
               child: ListView(
@@ -430,6 +543,24 @@ class _WorksTabState extends ConsumerState<_WorksTab>
                       }),
                       onPick: () => _pick(work),
                       onDelete: (title) => _delete(work, title),
+                      analyzing: analysis,
+                      onAdopt: () => _adopt(work),
+                      onIgnore: () => _suggestionAction(
+                        work,
+                        () => ignoreSuggestion(
+                          ref.read(apiClientProvider),
+                          work.id,
+                        ),
+                        '已忽略这条 AI 建议',
+                      ),
+                      onReanalyze: () => _suggestionAction(
+                        work,
+                        () => reanalyzeSuggestion(
+                          ref.read(apiClientProvider),
+                          work.id,
+                        ),
+                        '已重新排队分析',
+                      ),
                     ),
                   Pager(
                     offset: offset,

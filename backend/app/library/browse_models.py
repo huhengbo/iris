@@ -57,6 +57,20 @@ class LibraryDetail:
 
 
 @dataclass(frozen=True)
+class DiscoverFilters:
+    """按条件找片（AI 找片把问句转成它）。没填的条件不参与筛选；genres 满足任意一个即可。"""
+
+    kind: LibraryKind | None = None
+    genres: tuple[str, ...] = ()
+    year_from: int | None = None
+    year_to: int | None = None
+    min_rating: float | None = None
+    max_runtime: int | None = None
+    watched: bool | None = None
+    library_id: int | None = None
+
+
+@dataclass(frozen=True)
 class ItemCard:
     id: int
     library_id: int

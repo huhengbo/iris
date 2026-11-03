@@ -227,6 +227,7 @@ String scheduledTaskLabel(String key) => switch (key) {
   'cleanup_images' => '清理图片缓存',
   'cleanup_sessions' => '清理过期登录',
   'cleanup_play_events' => '清理一年前的播放记录',
+  'cleanup_ai_chats' => '清理 30 天前的 AI 对话',
   'refresh_metadata' => '刷新元数据',
   'download_subtitles' => '下载字幕',
   'empty_recycle_bin' => '清空回收站',

@@ -232,9 +232,12 @@ class _ArtworkSection extends StatelessWidget {
 }
 
 class _WorkRow extends StatelessWidget {
-  const _WorkRow({required this.work});
+  const _WorkRow({required this.work, this.onRevert});
 
   final ItemWork work;
+
+  /// 撤销 AI 自动匹配；null 时不显示
+  final VoidCallback? onRevert;
 
   @override
   Widget build(BuildContext context) {
@@ -250,10 +253,36 @@ class _WorkRow extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(child: Text(work.path)),
           if (work.manual) const _Tag('手动指定'),
+          if (work.aiMatched) ...[
+            const _AiBadge(),
+            if (onRevert != null)
+              TextButton(onPressed: onRevert, child: const Text('撤销 AI 匹配')),
+          ],
         ],
       ),
     );
   }
+}
+
+/// 「AI」小角标：这个作品是 AI 自动匹配的。
+class _AiBadge extends StatelessWidget {
+  const _AiBadge();
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: CinemaColors.surface3,
+      borderRadius: BorderRadius.circular(CinemaRadius.tiny),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Text(
+        'AI',
+        style: Theme.of(context).textTheme.labelSmall
+            ?.copyWith(color: CinemaColors.text1),
+      ),
+    ),
+  );
 }
 
 class _VersionRow extends StatelessWidget {

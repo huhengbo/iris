@@ -5,6 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, FastAPI
 
 from app.api import (
+    ai,
+    ai_chat,
     auth,
     browse,
     collections,
@@ -24,6 +26,9 @@ from app.api import (
 )
 from app.api.admin import (
     activity as admin_activity,
+)
+from app.api.admin import (
+    ai as admin_ai,
 )
 from app.api.admin import (
     alerts as admin_alerts,
@@ -150,6 +155,9 @@ def install_routes(app: FastAPI, config: AppConfig) -> None:
     api.include_router(sessions.public_router)
     api.include_router(admin_items.router)
     api.include_router(admin_activity.router)
+    api.include_router(admin_ai.router)
+    api.include_router(ai.router)
+    api.include_router(ai_chat.router)
     app.include_router(api)
     app.include_router(playback.redirect_router)
     app.include_router(emby.router)

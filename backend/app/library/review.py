@@ -108,6 +108,8 @@ class ItemWork:
     id: int
     path: str
     manual: bool
+    # AI 自动匹配的结果，可以撤销
+    ai_matched: bool = False
 
 
 @dataclass(frozen=True)
@@ -296,7 +298,9 @@ class ReviewQueries:
         ).fetchone()
         summary = self._db.execute(f"{_ITEM_SELECT} WHERE m.id = ?", (item_id,)).fetchone()
         works = self._db.execute(
-            "SELECT w.id, f.path AS folder_path, w.path, w.manual FROM work w "
+            "SELECT w.id, f.path AS folder_path, w.path, w.manual, EXISTS (SELECT 1 FROM "
+            "work_suggestion s WHERE s.work_id = w.id AND s.status = 'auto_matched') AS ai_matched "
+            "FROM work w "
             "JOIN library_folder f ON f.id = w.folder_id WHERE w.media_item_id = ? "
             "ORDER BY f.path, w.path",
             (item_id,),
@@ -328,7 +332,12 @@ class ReviewQueries:
             logo=image_sizes(row["logo_hash"], "logo"),
             scraped_at=row["scraped_at"],
             works=[
-                ItemWork(w["id"], join_path(w["folder_path"], w["path"]), bool(w["manual"]))
+                ItemWork(
+                    w["id"],
+                    join_path(w["folder_path"], w["path"]),
+                    bool(w["manual"]),
+                    bool(w["ai_matched"]),
+                )
                 for w in works
             ],
             versions=[

@@ -10,11 +10,17 @@
 
 | 错误码 | HTTP 状态 |
 |---|---|
+| `ai_action_not_pending` | 409 |
+| `ai_not_configured` | 409 |
+| `ai_provider_in_use` | 409 |
+| `ai_provider_name_taken` | 409 |
+| `ai_unavailable` | 502 |
 | `alert_already_open` | 409 |
 | `artwork_download_failed` | 400 |
 | `batch_in_progress` | 409 |
 | `cannot_modify_self` | 400 |
 | `catalog_changed` | 409 |
+| `chat_full` | 409 |
 | `database_corrupt` | 500 |
 | `delete_confirmation_required` | 409 |
 | `empty_selection` | 400 |
@@ -24,11 +30,15 @@
 | `file_not_unplaced` | 409 |
 | `forbidden` | 403 |
 | `idempotency_key_conflict` | 409 |
+| `invalid_ai_provider` | 400 |
+| `invalid_ai_role` | 400 |
+| `invalid_ai_setting` | 400 |
 | `invalid_artwork` | 400 |
 | `invalid_artwork_kind` | 400 |
 | `invalid_artwork_url` | 400 |
 | `invalid_backup` | 422 / 500 |
 | `invalid_batch_action` | 400 |
+| `invalid_chat_message` | 400 |
 | `invalid_credentials` | 401 |
 | `invalid_downloader` | 400 |
 | `invalid_extras_threshold` | 400 |
@@ -55,9 +65,9 @@
 | `invalid_username` | 400 |
 | `item_has_no_dir` | 400 |
 | `last_admin` | 400 |
+| `library_folder_not_selectable` | 400 |
 | `library_folder_overlap` | 409 |
 | `library_folder_required` | 400 |
-| `library_folder_not_selectable` | 400 |
 | `library_name_taken` | 409 |
 | `library_setting_reserved` | 400 |
 | `media_folder_shared` | 409 |
@@ -84,8 +94,8 @@
 | `plugin_conflict` | 409 |
 | `plugin_disabled` | 409 |
 | `plugin_id_conflict` | 409 |
-| `plugin_incompatible` | 409 |
 | `plugin_in_use` | 409 |
+| `plugin_incompatible` | 409 |
 | `plugin_installed` | 409 |
 | `plugin_local_source` | 409 |
 | `plugin_manifest_invalid` | 409 |
@@ -125,6 +135,8 @@
 | `subtitle_provider_failed` | 502 |
 | `subtitle_provider_unavailable` | 409 |
 | `subtitle_rate_limited` | 429 |
+| `suggestion_empty` | 409 |
+| `suggestion_not_pending` | 409 |
 | `sync_running` | 409 |
 | `task_already_failed` | 409 |
 | `task_already_running` | 409 |
@@ -139,5 +151,6 @@
 | `username_taken` | 409 |
 | `weak_password` | 400 |
 | `work_matched` | 409 |
+| `work_not_auto_matched` | 409 |
 | `work_not_unmatched` | 409 |
 | `wrong_password` | 400 |

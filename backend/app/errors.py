@@ -106,6 +106,11 @@ def install_openapi_errors(app: FastAPI) -> None:
                 if method not in _HTTP_METHODS:
                     continue
                 responses = operation.setdefault("responses", {})
+                if operation.pop("x-sse", False):
+                    # 流式接口：FastAPI 把 responses 里的模型登记成 JSON，这里改回 SSE 的媒体类型
+                    content_ok = responses.get("200", {}).get("content", {})
+                    if "application/json" in content_ok:
+                        content_ok["text/event-stream"] = content_ok.pop("application/json")
                 if "422" in responses:
                     responses["422"] = {"description": "请求参数不合法", "content": content}
                 responses.setdefault("4XX", {"description": "客户端错误", "content": content})

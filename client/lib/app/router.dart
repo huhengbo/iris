@@ -15,6 +15,7 @@ import '../features/admin/logs_page.dart';
 import '../features/admin/plugin_detail_page.dart';
 import '../features/admin/plugin_repositories_page.dart';
 import '../features/admin/resource_source_detail_page.dart';
+import '../features/ai/ai_chat_page.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/auth/login_page.dart';
 import '../features/detail/detail_page.dart';
@@ -72,6 +73,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/cast',
         redirect: (_, state) => state.extra is CastArgs ? null : '/',
         builder: (_, state) => CastPage(args: state.extra! as CastArgs),
+      ),
+      // AI 对话：手机上是全屏页，不在底部导航里；q 是从搜索页带来的问句
+      GoRoute(
+        path: '/ai',
+        builder: (_, state) =>
+            AiChatPage(initialQuestion: state.uri.queryParameters['q']),
       ),
       // 设置与管理后台合一（第 ⑤ 批）。宽屏是左栏分组菜单加右栏内容，手机和 TV
       // 是分组列表逐层进入；每个设置项一个地址。

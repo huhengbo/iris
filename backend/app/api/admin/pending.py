@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 
+from app.ai.suggestions import Suggestion
 from app.api.admin.items import DEFAULT_PAGE_SIZE, AdminItemDetailOut, Limit, Offset, item_detail
 from app.api.admin.pending_batch import (
     assign_files_batch,
@@ -29,10 +31,12 @@ from app.api.admin.pending_models import (
     PendingDeleteRequest,
     PendingSummaryOut,
     RematchWorkBatchRequest,
+    SuggestionOut,
+    SuggestionStepOut,
     WorkOut,
     WorkPage,
 )
-from app.deps import AdminUser, AppCuration, AppDatabase, MetadataPlugins, ReadDb
+from app.deps import AdminUser, AppCuration, AppDatabase, MetadataPlugins, ReadDb, Suggestions
 from app.library.metadata_providers import DEFAULT_PROVIDER, BoundProvider, MetadataProviders
 from app.library.recognize import LibraryKind
 from app.library.review import FileStatus, ReviewQueries, WorkState
@@ -80,6 +84,7 @@ def list_works(
     _: AdminUser,
     db: ReadDb,
     providers: MetadataPlugins,
+    suggestions: Suggestions,
     state: WorkState = "unmatched",
     library_id: int | None = None,
     offset: Offset = 0,
@@ -87,6 +92,7 @@ def list_works(
 ) -> WorkPage:
     page = ReviewQueries(db).works(state, library_id, offset, limit)
     url = providers.url_lookup()
+    suggested = suggestions.for_works(db, [w.id for w in page.items])
     return WorkPage(
         items=[
             WorkOut(
@@ -115,11 +121,72 @@ def list_works(
                 ],
                 file_count=w.file_count,
                 item=ItemRefOut.model_validate(w.item) if w.item else None,
+                suggestion=_suggestion_out(suggested.get(w.id), w.kind, url),
             )
             for w in page.items
         ],
         total=page.total,
     )
+
+
+def _suggestion_out(
+    suggestion: Suggestion | None,
+    kind: LibraryKind,
+    url: Callable[[str, LibraryKind, str], str | None],
+) -> SuggestionOut | None:
+    if suggestion is None:
+        return None
+    return SuggestionOut(
+        id=suggestion.id,
+        provider_id=suggestion.provider_id,
+        remote_id=suggestion.remote_id,
+        title=suggestion.title,
+        original_title=suggestion.original_title,
+        year=suggestion.year,
+        url=(
+            url(suggestion.provider_id, kind, suggestion.remote_id)
+            if suggestion.provider_id and suggestion.remote_id
+            else None
+        ),
+        confidence=suggestion.confidence,
+        reason=suggestion.reason,
+        steps=[SuggestionStepOut(**vars(step)) for step in suggestion.steps],
+        model=suggestion.model,
+        status=suggestion.status,  # type: ignore[arg-type]
+        created_at=suggestion.created_at,
+    )
+
+
+@router.post("/works/{work_id}/suggestion/adopt")
+def adopt_suggestion(
+    work_id: int,
+    _: AdminUser,
+    suggestions: Suggestions,
+    database: AppDatabase,
+    providers: MetadataPlugins,
+) -> AdminItemDetailOut:
+    """采用 AI 的匹配建议，等同于手动指定，之后同步不再改动。"""
+    return item_detail(database, providers, suggestions.adopt(work_id))
+
+
+@router.post("/works/{work_id}/suggestion/ignore", status_code=204)
+def ignore_suggestion(work_id: int, _: AdminUser, suggestions: Suggestions) -> Response:
+    suggestions.ignore(work_id)
+    return Response(status_code=204)
+
+
+@router.post("/works/{work_id}/suggestion/reanalyze", status_code=204)
+def reanalyze_suggestion(work_id: int, _: AdminUser, suggestions: Suggestions) -> Response:
+    """丢弃现有建议，稍后由后台任务重新分析。"""
+    suggestions.reanalyze(work_id)
+    return Response(status_code=204)
+
+
+@router.post("/works/{work_id}/suggestion/revert", status_code=204)
+def revert_suggestion(work_id: int, _: AdminUser, suggestions: Suggestions) -> Response:
+    """撤销 AI 自动匹配：作品回到待处理，且不再自动匹配同一个候选。"""
+    suggestions.revert(work_id)
+    return Response(status_code=204)
 
 
 @router.post("/works/{work_id}/assign")

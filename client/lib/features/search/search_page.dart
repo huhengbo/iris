@@ -6,12 +6,16 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/shell.dart';
 import '../../app/theme.dart';
+import '../../app/tv.dart';
 import '../../core/api/paging.dart';
 import '../../core/format.dart';
+import '../ai/ai_availability.dart';
 import '../library/art_image.dart';
 import '../library/browse_api.dart';
 import '../library/poster_card.dart';
 import '../../core/widgets/empty_state.dart';
+import 'ask_search_api.dart';
+import 'ask_search_block.dart';
 
 final searchHistoryProvider =
     NotifierProvider<SearchHistoryNotifier, List<String>>(
@@ -105,6 +109,23 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     _search('');
   }
 
+  /// AI 区块只在 AI 已配置、不是电视、并且输入像描述句或普通结果为空时出现
+  /// （普通结果照常显示，不等 AI）。
+  bool _showAsk(String query, AsyncValue<CardList> results) {
+    final loaded = results.value;
+    final discovery = loaded?.discovery;
+    final wanted =
+        looksLikeQuestion(query) ||
+        (query.runes.length >= 2 &&
+            loaded != null &&
+            loaded.items.isEmpty &&
+            (discovery == null ||
+                (discovery.people.isEmpty && discovery.episodes.isEmpty)));
+    // 先看输入再看服务器配置：普通搜索不必去读系统信息
+    if (!wanted || ref.watch(televisionProvider)) return false;
+    return ref.watch(aiAvailabilityProvider).askSearch;
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = widget.query.trim();
@@ -176,6 +197,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               ),
             )
           else ...[
+            if (_showAsk(query, results))
+              SliverToBoxAdapter(
+                child: AskSearchBlock(query: query, gutter: gutter),
+              ),
             if (discovery != null)
               SliverToBoxAdapter(
                 child: _DiscoveryResults(value: discovery, gutter: gutter),

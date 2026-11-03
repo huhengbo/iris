@@ -8,6 +8,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.ai.actions import PendingActions
+from app.ai.ask import AskSearch
+from app.ai.chat import ChatService
+from app.ai.semantic import SemanticIndex
+from app.ai.service import AiService
+from app.ai.settings import AiSettings
+from app.ai.suggestions import SuggestionService
+from app.ai.tools import ToolRegistry
 from app.auth.throttle import LoginThrottle
 from app.auth.tokens import TokenSigner
 from app.auth.webdav import WebDavService
@@ -41,6 +49,14 @@ class AppContainer:
     settings: SettingsService
     access_signer: TokenSigner
     login_throttle: LoginThrottle
+    ai: AiService
+    semantic: SemanticIndex
+    tools: ToolRegistry
+    ai_settings: AiSettings
+    actions: PendingActions
+    suggestions: SuggestionService
+    ask: AskSearch
+    chat: ChatService
     playback: PlaybackService
     subtitles: OnlineSubtitles
     subtitle_auto: SubtitleAutoDownloader

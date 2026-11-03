@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import timedelta
 
 from app.clock import Clock, to_iso
 
@@ -24,6 +25,11 @@ class Cleanup:
         return self._db.execute(
             "DELETE FROM play_event WHERE created_at < datetime('now', '-365 days')"
         ).rowcount
+
+    def old_ai_chats(self) -> int:
+        """AI 对话保留 30 天（ADR 0030），按最后一次更新计；消息随对话级联删除。"""
+        cutoff = to_iso(self._clock.now() - timedelta(days=30))
+        return self._db.execute("DELETE FROM ai_chat WHERE updated_at < ?", (cutoff,)).rowcount
 
     def missing_files(self) -> int:
         return self._db.execute("DELETE FROM media_file WHERE state='missing'").rowcount

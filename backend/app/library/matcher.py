@@ -102,7 +102,7 @@ class Matcher:
             return "unmatched"
         found_any = False
         candidates: dict[str, Candidate] = {}
-        names = {_comparable(n) for n in (work.title, work.alt_title) if n}
+        names = {comparable(n) for n in (work.title, work.alt_title) if n}
         for query in _queries(work.title, work.alt_title):
             results = provider.search(work.kind, query, priority)
             found_any = found_any or bool(results)
@@ -130,6 +130,19 @@ class Matcher:
                 "UPDATE work SET state = 'matched', media_item_id = ?, manual = 1, reason = NULL, "
                 "candidates = '[]', updated_at = ? WHERE id = ?",
                 (item_id, to_iso(self._clock.now()), work_id),
+            )
+
+    def auto_assign(self, work_id: int, item_id: int) -> bool:
+        """AI 自动匹配写入：和规则匹配一样不标记手动；作品已被管理员手动指定时不写，返回 False。"""
+        with self._database.session() as connection:
+            return (
+                connection.execute(
+                    "UPDATE work SET state = 'matched', media_item_id = ?, reason = NULL, "
+                    "candidates = '[]', updated_at = ? WHERE id = ? AND manual = 0 "
+                    "AND state = 'unmatched'",
+                    (item_id, to_iso(self._clock.now()), work_id),
+                ).rowcount
+                > 0
             )
 
     def reset(self, work_ids: Sequence[int]) -> None:
@@ -186,8 +199,8 @@ def choose(results: list[MetadataCandidate], names: set[str], year: int | None) 
         return None
 
     def same_name(result: MetadataCandidate) -> bool:
-        return _comparable(result.title) in names or (
-            result.original_title is not None and _comparable(result.original_title) in names
+        return comparable(result.title) in names or (
+            result.original_title is not None and comparable(result.original_title) in names
         )
 
     if year is not None:
@@ -208,13 +221,13 @@ def _scored(candidate: Candidate, names: set[str], year: int | None, *, unique: 
     score = 0
     reasons: list[str] = []
     titles = [t for t in (candidate.title, candidate.original_title) if t]
-    comparable = [_comparable(t) for t in titles]
-    if any(t in names for t in comparable):
+    normalized = [comparable(t) for t in titles]
+    if any(t in names for t in normalized):
         score += 60
         reasons.append("片名完全一致")
     else:
         ratio = max(
-            (SequenceMatcher(None, t, n).ratio() for t in comparable for n in names), default=0.0
+            (SequenceMatcher(None, t, n).ratio() for t in normalized for n in names), default=0.0
         )
         score += round(ratio * 40)
         reasons.append(f"片名相似度 {round(ratio * 100)}%")
@@ -245,6 +258,6 @@ def _queries(title: str, alt_title: str | None) -> list[str]:
     return [q for q in dict.fromkeys(normalize(q) for q in queries) if q]
 
 
-def _comparable(text: str) -> str:
+def comparable(text: str) -> str:
     """比较片名用：忽略大小写、空格和标点。"""
     return _NOT_WORD.sub("", text.lower())

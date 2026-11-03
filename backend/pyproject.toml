@@ -5,13 +5,16 @@ description = "光圈后端"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 dependencies = [
+    "anthropic>=2.4.0",
     "argon2-cffi>=25.1.0",
     "cryptography>=46",
     "fastapi>=0.142.2",
     "httpx2[socks]>=2.13.1",
     "iris-plugin-sdk",
+    "openai>=3.42.1",
     "pillow>=11",
     "pydantic>=2.13.5",
+    "sqlite-vec>=0.1.9",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -38,6 +41,11 @@ python_version = "3.13"
 strict = true
 mypy_path = "../packages/iris-plugin-sdk"
 packages = ["app", "tests"]
+
+[[tool.mypy.overrides]]
+# sqlite-vec 没有类型声明
+module = ["sqlite_vec"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

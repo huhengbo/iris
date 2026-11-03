@@ -61,6 +61,35 @@ curl -fsSL https://raw.githubusercontent.com/huhengbo/iris/main/scripts/install.
 - 不要给 `/api/` 和 `/play/` 加缓存；前端 JS 返回 `no-cache`，要让浏览器遵循服务端的缓存头。
   - 用 Cloudflare 时，「浏览器缓存 TTL」要设为「遵循现有标头」，否则 Cloudflare 会把 `main.dart.js` 改成缓存 4 小时，部署后浏览器可能拿旧的 JS 配新资源。
 - 只有自己托管的 Web 页面和 App 访问时，不需要设置 `APP_CORS_ORIGINS`（ADR 0017）。
+- AI 对话的回答用 SSE 流式返回（`POST /api/ai/chats/{id}/messages`），反向代理不能缓冲这个响应，读超时至少 120 秒，否则回答会攒成一整段才出现，或者中途被切断。服务已经在响应头里带了 `X-Accel-Buffering: no`，nginx 会遵守；其他代理的设置：
+  - Traefik、Caddy 默认不缓冲，不用改；
+  - nginx：`proxy_buffering off; proxy_read_timeout 300s;`（只对 `/api/ai/` 设置即可）；
+  - Cloudflare 不缓冲 `text/event-stream`，但免费版的连接超过 100 秒没有数据会被切断，所以回答再慢也比这个短。
+
+Traefik（容器和代理在同一个外部网络 `proxy` 里）的示例，替换 `docker-compose.yml` 里的 `ports`：
+
+```yaml
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.iris.rule=Host(`movie.example.com`)
+      - traefik.http.routers.iris.entrypoints=websecure
+      - traefik.http.routers.iris.tls.certresolver=letsencrypt
+      - traefik.http.services.iris.loadbalancer.server.port=8080
+
+networks:
+  proxy:
+    external: true
+```
+
+Caddy 的示例：
+
+```
+movie.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
 
 Traefik（容器和代理在同一个外部网络 `proxy` 里）的示例，替换 `docker-compose.yml` 里的 `ports`：
 
@@ -100,6 +129,22 @@ movie.example.com {
 - **只支持直接播放**：服务端不转码，也不代理视频流，只把客户端的播放请求 302 跳到资源来源的直链（本地来源则直接返回文件）。依赖转码的客户端和格式不在支持范围内。
 - **设备令牌**：每次登录会生成一个长期有效、可在「我的设备」里撤销的客户端设备。用户被禁用、修改密码或资料库可见范围变化时，设备令牌立即失效；在「我的设备」里撤销后，正在使用的串流地址也会立刻返回 401。
 - **日志里的令牌**：客户端会自己拼 `api_key=` 串流地址，设备令牌可能出现在反向代理的访问日志里。请让反代不要记录查询参数，或把访问日志当成敏感数据保管；令牌泄露后到「我的设备」撤销对应设备即可，不需要改密码。
+
+## AI 助手
+
+AI 助手是可选功能，默认关闭；没有配置对话模型时，App 和 Web 里看不到任何 AI 入口。管理员在「设置 → AI 助手」配置：
+
+1. 添加模型提供方：选预设（DeepSeek、硅基流动、Anthropic、OpenAI、Ollama）或自定义地址，填 Key，点「测试连接」。Key 用 `APP_SECRET_KEY` 加密保存，所以更换 `APP_SECRET_KEY` 之后要重新填写各提供方的 Key。
+2. 给三种用途选模型（模型名手填）：
+   - 对话：AI 找片和 AI 对话；
+   - 后台任务：为待处理的作品生成匹配建议；
+   - 向量：语义索引，需要 OpenAI 兼容的 embedding 接口（例如硅基流动的 `BAAI/bge-m3`）。可以不配，只是「像某部片那样」这类找片会退化为只按条件筛选。
+
+**数据会发给你配置的模型提供方**：片名、简介、网盘里的目录名和文件名、用户在 AI 对话里输入的内容，以及（用户使用 AI 对话时）这个用户的观看记录。在意隐私的话用本地 Ollama，数据不出内网。用量（次数和 token 数）只记录，不做限额；想控制花费请在提供方那里设置额度。
+
+- 语义索引存在同一个 SQLite 数据库里，随数据库一起备份。更换向量模型会自动重建索引，大资料库需要几分钟到几十分钟（后台进行，进度在 AI 设置页）。
+- 语义索引依赖 sqlite-vec 扩展。镜像里已经包含；万一在你的平台上加载失败，日志里会有一条警告，只有语义召回不可用，其他功能照常。
+- AI 对话按用户保存 30 天，用户可以在对话列表里删除；由「清理 AI 对话」计划任务清理（默认每天一次）。
 
 ## 数据和备份
 

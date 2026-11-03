@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/servers.dart';
+import '../features/ai/ai_entry_button.dart';
 import '../features/auth/account_switcher.dart';
 import '../features/auth/auth_controller.dart';
 import 'account_menu.dart';
@@ -81,6 +82,7 @@ class _TopBarState extends ConsumerState<TopBar> {
             ),
           ),
           const SizedBox(width: 8),
+          const AiEntryButton(),
           if (isAdmin) const ActivityMenu(),
           IconButton(
             tooltip: '设置',

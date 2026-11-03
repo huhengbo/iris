@@ -28,6 +28,7 @@ import '../admin/tasks_page.dart';
 import '../admin/troubleshooting_page.dart';
 import '../admin/users_page.dart';
 import '../admin/webhooks_page.dart';
+import '../admin/ai_settings_page.dart';
 import '../auth/auth_controller.dart';
 import 'about_page.dart';
 import 'devices_page.dart';
@@ -145,6 +146,12 @@ const _serverEntries = <SettingsEntry>[
     title: '计划任务',
     icon: Icons.schedule_outlined,
     page: SchedulesPage(),
+  ),
+  SettingsEntry(
+    path: '/settings/server/ai',
+    title: 'AI 助手',
+    icon: Icons.auto_awesome_outlined,
+    page: AiSettingsPage(),
   ),
   SettingsEntry(
     path: '/settings/server/webhooks',

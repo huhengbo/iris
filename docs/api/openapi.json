@@ -692,6 +692,194 @@
         "title": "AdminVersionSubtitlesOut",
         "type": "object"
       },
+      "AiAvailabilityOut": {
+        "description": "AI 助手哪些入口可用；没有配置对话模型时全部为 false，客户端不显示任何 AI 入口。",
+        "properties": {
+          "ask_search": {
+            "title": "Ask Search",
+            "type": "boolean"
+          },
+          "chat": {
+            "title": "Chat",
+            "type": "boolean"
+          },
+          "semantic": {
+            "title": "Semantic",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "chat",
+          "ask_search",
+          "semantic"
+        ],
+        "title": "AiAvailabilityOut",
+        "type": "object"
+      },
+      "AiProviderOut": {
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "key_set": {
+            "title": "Key Set",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "openai",
+              "anthropic"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_test": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastTestOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "used_by": {
+            "items": {
+              "enum": [
+                "chat",
+                "task",
+                "embedding"
+              ],
+              "type": "string"
+            },
+            "title": "Used By",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "base_url",
+          "key_set",
+          "last_test",
+          "used_by"
+        ],
+        "title": "AiProviderOut",
+        "type": "object"
+      },
+      "AiProvidersOut": {
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/AiProviderOut"
+            },
+            "title": "Providers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "title": "AiProvidersOut",
+        "type": "object"
+      },
+      "AiSettingsOut": {
+        "properties": {
+          "auto_match": {
+            "title": "Auto Match",
+            "type": "boolean"
+          },
+          "auto_match_threshold": {
+            "title": "Auto Match Threshold",
+            "type": "number"
+          },
+          "reversible_write": {
+            "enum": [
+              "confirm",
+              "auto"
+            ],
+            "title": "Reversible Write",
+            "type": "string"
+          },
+          "suggest_matches": {
+            "title": "Suggest Matches",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reversible_write",
+          "suggest_matches",
+          "auto_match",
+          "auto_match_threshold"
+        ],
+        "title": "AiSettingsOut",
+        "type": "object"
+      },
+      "AiSettingsRequest": {
+        "description": "不传的项保持原值。",
+        "properties": {
+          "auto_match": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Match"
+          },
+          "auto_match_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Match Threshold"
+          },
+          "reversible_write": {
+            "anyOf": [
+              {
+                "enum": [
+                  "confirm",
+                  "auto"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversible Write"
+          },
+          "suggest_matches": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggest Matches"
+          }
+        },
+        "title": "AiSettingsRequest",
+        "type": "object"
+      },
       "AlertCreate": {
         "properties": {
           "fingerprint": {
@@ -881,6 +1069,235 @@
           "candidates"
         ],
         "title": "ArtworkOut",
+        "type": "object"
+      },
+      "AskFilters": {
+        "description": "影视墙的筛选条件，加上一句用于语义召回的描述。没填的条件不参与筛选。",
+        "properties": {
+          "genres": {
+            "description": "类型，满足任意一个即可",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Genres",
+            "type": "array"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "movie",
+                  "series"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "电影或剧集",
+            "title": "Kind"
+          },
+          "library_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "限定资料库，编号见提示",
+            "title": "Library Id"
+          },
+          "max_runtime": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最长时长（分钟）",
+            "title": "Max Runtime"
+          },
+          "min_rating": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最低评分",
+            "title": "Min Rating"
+          },
+          "semantic_query": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "难以用条件表达的偏好，写得像影视简介",
+            "title": "Semantic Query"
+          },
+          "watched": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "true 只要看过的，false 只要没看过的",
+            "title": "Watched"
+          },
+          "year_from": {
+            "anyOf": [
+              {
+                "maximum": 2100.0,
+                "minimum": 1880.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "起始年份",
+            "title": "Year From"
+          },
+          "year_to": {
+            "anyOf": [
+              {
+                "maximum": 2100.0,
+                "minimum": 1880.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "截止年份",
+            "title": "Year To"
+          }
+        },
+        "title": "AskFilters",
+        "type": "object"
+      },
+      "AskQueryRequest": {
+        "description": "用（可能被用户改过的）筛选条件直接查询，不再请求模型。",
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/AskFilters"
+          },
+          "limit": {
+            "default": 30,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "filters"
+        ],
+        "title": "AskQueryRequest",
+        "type": "object"
+      },
+      "AskResultOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemCardOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "semantic_used": {
+            "title": "Semantic Used",
+            "type": "boolean"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "semantic_used"
+        ],
+        "title": "AskResultOut",
+        "type": "object"
+      },
+      "AskSearchOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemCardOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "semantic_used": {
+            "title": "Semantic Used",
+            "type": "boolean"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "understood": {
+            "$ref": "#/components/schemas/AskFilters"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "semantic_used",
+          "understood"
+        ],
+        "title": "AskSearchOut",
+        "type": "object"
+      },
+      "AskSearchRequest": {
+        "properties": {
+          "limit": {
+            "default": 30,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "AskSearchRequest",
         "type": "object"
       },
       "AssignFileBatchRequest": {
@@ -1763,6 +2180,267 @@
         "title": "ChangePasswordRequest",
         "type": "object"
       },
+      "ChatDetailOut": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessageOut"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "updated_at",
+          "messages"
+        ],
+        "title": "ChatDetailOut",
+        "type": "object"
+      },
+      "ChatListOut": {
+        "properties": {
+          "chats": {
+            "items": {
+              "$ref": "#/components/schemas/ChatOut"
+            },
+            "title": "Chats",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chats"
+        ],
+        "title": "ChatListOut",
+        "type": "object"
+      },
+      "ChatMessageOut": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemCardOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "stopped",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/ChatStepOut"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "thinking_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Seconds"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content",
+          "steps",
+          "items",
+          "suggestions",
+          "thinking_seconds",
+          "status",
+          "error",
+          "created_at"
+        ],
+        "title": "ChatMessageOut",
+        "type": "object"
+      },
+      "ChatOut": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatOut",
+        "type": "object"
+      },
+      "ChatStepOut": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "summary",
+          "ok",
+          "item_ids"
+        ],
+        "title": "ChatStepOut",
+        "type": "object"
+      },
+      "ChatStream": {
+        "description": "事件流的整体说明：按出现顺序，最后一个事件是 done 或 error。",
+        "properties": {
+          "events": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "done": "#/components/schemas/DoneEvent",
+                  "error": "#/components/schemas/ErrorEvent",
+                  "start": "#/components/schemas/StartEvent",
+                  "suggestions": "#/components/schemas/SuggestionsEvent",
+                  "text": "#/components/schemas/TextEvent",
+                  "thinking": "#/components/schemas/ThinkingEvent",
+                  "tool_end": "#/components/schemas/ToolEndEvent",
+                  "tool_start": "#/components/schemas/ToolStartEvent"
+                },
+                "propertyName": "event"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/StartEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ThinkingEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolStartEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolEndEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/TextEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/SuggestionsEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/DoneEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ErrorEvent"
+                }
+              ]
+            },
+            "title": "Events",
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "title": "ChatStream",
+        "type": "object"
+      },
       "ClientPlaysOut": {
         "properties": {
           "count": {
@@ -2550,6 +3228,47 @@
         "title": "DeviceSessionOut",
         "type": "object"
       },
+      "DoneData": {
+        "properties": {
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message_id",
+          "input_tokens",
+          "output_tokens"
+        ],
+        "title": "DoneData",
+        "type": "object"
+      },
+      "DoneEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DoneData"
+          },
+          "event": {
+            "const": "done",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "DoneEvent",
+        "type": "object"
+      },
       "DownloaderIn": {
         "properties": {
           "enabled": {
@@ -2987,6 +3706,42 @@
           "message"
         ],
         "title": "ErrorBody",
+        "type": "object"
+      },
+      "ErrorData": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorData",
+        "type": "object"
+      },
+      "ErrorEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ErrorData"
+          },
+          "event": {
+            "const": "error",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "ErrorEvent",
         "type": "object"
       },
       "ErrorResponse": {
@@ -4402,6 +5157,11 @@
       },
       "ItemWorkOut": {
         "properties": {
+          "ai_matched": {
+            "default": false,
+            "title": "Ai Matched",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -4601,6 +5361,36 @@
           "task_id"
         ],
         "title": "JobOut",
+        "type": "object"
+      },
+      "LastTestOut": {
+        "properties": {
+          "checked_at": {
+            "title": "Checked At",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "checked_at",
+          "message"
+        ],
+        "title": "LastTestOut",
         "type": "object"
       },
       "LaunchLinksOut": {
@@ -5724,6 +6514,133 @@
           "enabled"
         ],
         "title": "PatchRepositoryRequest",
+        "type": "object"
+      },
+      "PendingActionOut": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "executed",
+              "failed",
+              "rejected",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "id",
+          "tool",
+          "summary",
+          "reason",
+          "user_id",
+          "status",
+          "created_at",
+          "expires_at",
+          "decided_at",
+          "decided_by",
+          "result",
+          "error"
+        ],
+        "title": "PendingActionOut",
+        "type": "object"
+      },
+      "PendingActionsOut": {
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/PendingActionOut"
+            },
+            "title": "Actions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "actions"
+        ],
+        "title": "PendingActionsOut",
         "type": "object"
       },
       "PendingCountOut": {
@@ -7307,6 +8224,64 @@
         "title": "PreferencesOut",
         "type": "object"
       },
+      "PresetOut": {
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "chat_model": {
+            "title": "Chat Model",
+            "type": "string"
+          },
+          "embedding_model": {
+            "title": "Embedding Model",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "openai",
+              "anthropic"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "base_url",
+          "chat_model",
+          "embedding_model"
+        ],
+        "title": "PresetOut",
+        "type": "object"
+      },
+      "PresetsOut": {
+        "properties": {
+          "presets": {
+            "items": {
+              "$ref": "#/components/schemas/PresetOut"
+            },
+            "title": "Presets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "presets"
+        ],
+        "title": "PresetsOut",
+        "type": "object"
+      },
       "ProgressIn": {
         "description": "内置播放器上报的进度，单位秒。",
         "properties": {
@@ -7401,6 +8376,94 @@
           "source_count"
         ],
         "title": "ProviderOut",
+        "type": "object"
+      },
+      "ProviderRequest": {
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "base_url": {
+            "maxLength": 1024,
+            "title": "Base Url",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "openai",
+              "anthropic"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "base_url"
+        ],
+        "title": "ProviderRequest",
+        "type": "object"
+      },
+      "ProviderTestOut": {
+        "properties": {
+          "checked_at": {
+            "title": "Checked At",
+            "type": "string"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "error_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Kind"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "checked_at",
+          "error_kind",
+          "message",
+          "duration_ms"
+        ],
+        "title": "ProviderTestOut",
         "type": "object"
       },
       "PurgeOut": {
@@ -7942,6 +9005,121 @@
         "title": "RestoreOut",
         "type": "object"
       },
+      "RoleBindingBody": {
+        "properties": {
+          "model": {
+            "maxLength": 256,
+            "title": "Model",
+            "type": "string"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider_id",
+          "model"
+        ],
+        "title": "RoleBindingBody",
+        "type": "object"
+      },
+      "RoleBindingOut": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider_id",
+          "model"
+        ],
+        "title": "RoleBindingOut",
+        "type": "object"
+      },
+      "RolesOut": {
+        "properties": {
+          "chat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleBindingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "embedding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleBindingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "task": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleBindingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "chat",
+          "task",
+          "embedding"
+        ],
+        "title": "RolesOut",
+        "type": "object"
+      },
+      "RolesRequest": {
+        "description": "不传的用途保持原值，传 null 表示清除。",
+        "properties": {
+          "chat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleBindingBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "embedding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleBindingBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "task": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleBindingBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "RolesRequest",
+        "type": "object"
+      },
       "RootRef": {
         "description": "来源里的一个目录。",
         "properties": {
@@ -8319,6 +9497,75 @@
           "episode_count"
         ],
         "title": "SeasonOut",
+        "type": "object"
+      },
+      "SemanticStatusOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "indexed": {
+            "title": "Indexed",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "state": {
+            "enum": [
+              "off",
+              "unavailable",
+              "building",
+              "ready",
+              "error"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state",
+          "model",
+          "total",
+          "indexed",
+          "error"
+        ],
+        "title": "SemanticStatusOut",
+        "type": "object"
+      },
+      "SendMessageRequest": {
+        "properties": {
+          "content": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "SendMessageRequest",
         "type": "object"
       },
       "ServerHealthOut": {
@@ -8732,6 +9979,42 @@
           }
         },
         "title": "SourceUpdate",
+        "type": "object"
+      },
+      "StartData": {
+        "properties": {
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "integer"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chat_id",
+          "message_id"
+        ],
+        "title": "StartData",
+        "type": "object"
+      },
+      "StartEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StartData"
+          },
+          "event": {
+            "const": "start",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "StartEvent",
         "type": "object"
       },
       "StartRequest": {
@@ -9272,6 +10555,194 @@
         "title": "SubtitleSearchProviderOut",
         "type": "object"
       },
+      "SuggestionOut": {
+        "description": "后台任务模型给出的匹配建议。没有 remote_id 表示模型查过但没有把握。",
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "original_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Title"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "remote_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote Id"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "adopted",
+              "ignored",
+              "auto_matched",
+              "reverted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestionStepOut"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "id",
+          "provider_id",
+          "remote_id",
+          "title",
+          "original_title",
+          "year",
+          "url",
+          "confidence",
+          "reason",
+          "steps",
+          "model",
+          "status",
+          "created_at"
+        ],
+        "title": "SuggestionOut",
+        "type": "object"
+      },
+      "SuggestionStepOut": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "label",
+          "summary",
+          "ok"
+        ],
+        "title": "SuggestionStepOut",
+        "type": "object"
+      },
+      "SuggestionsData": {
+        "properties": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SuggestionsData",
+        "type": "object"
+      },
+      "SuggestionsEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SuggestionsData"
+          },
+          "event": {
+            "const": "suggestions",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "SuggestionsEvent",
+        "type": "object"
+      },
       "SummaryOut": {
         "properties": {
           "held_deletions": {
@@ -9330,6 +10801,9 @@
       },
       "SystemInfoOut": {
         "properties": {
+          "ai": {
+            "$ref": "#/components/schemas/AiAvailabilityOut"
+          },
           "api_version": {
             "title": "Api Version",
             "type": "integer"
@@ -9356,7 +10830,8 @@
           "server_id",
           "server_name",
           "version",
-          "api_version"
+          "api_version",
+          "ai"
         ],
         "title": "SystemInfoOut",
         "type": "object"
@@ -9493,6 +10968,80 @@
         "title": "TaskStartedOut",
         "type": "object"
       },
+      "TextData": {
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delta"
+        ],
+        "title": "TextData",
+        "type": "object"
+      },
+      "TextEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TextData"
+          },
+          "event": {
+            "const": "text",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "TextEvent",
+        "type": "object"
+      },
+      "ThinkingData": {
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds"
+          }
+        },
+        "required": [
+          "delta",
+          "seconds"
+        ],
+        "title": "ThinkingData",
+        "type": "object"
+      },
+      "ThinkingEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ThinkingData"
+          },
+          "event": {
+            "const": "thinking",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "ThinkingEvent",
+        "type": "object"
+      },
       "TokensOut": {
         "properties": {
           "access_token": {
@@ -9519,6 +11068,101 @@
           "expires_in"
         ],
         "title": "TokensOut",
+        "type": "object"
+      },
+      "ToolEndData": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemCardOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "summary",
+          "ok",
+          "items"
+        ],
+        "title": "ToolEndData",
+        "type": "object"
+      },
+      "ToolEndEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ToolEndData"
+          },
+          "event": {
+            "const": "tool_end",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "ToolEndEvent",
+        "type": "object"
+      },
+      "ToolStartData": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "label"
+        ],
+        "title": "ToolStartData",
+        "type": "object"
+      },
+      "ToolStartEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ToolStartData"
+          },
+          "event": {
+            "const": "tool_start",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "ToolStartEvent",
         "type": "object"
       },
       "TopItemOut": {
@@ -9791,6 +11435,65 @@
           "expires_at"
         ],
         "title": "UploadOut",
+        "type": "object"
+      },
+      "UsageOut": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/UsageRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "UsageOut",
+        "type": "object"
+      },
+      "UsageRowOut": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "failures": {
+            "title": "Failures",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "chat",
+              "task",
+              "embedding"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "month",
+          "role",
+          "calls",
+          "failures",
+          "input_tokens",
+          "output_tokens"
+        ],
+        "title": "UsageRowOut",
         "type": "object"
       },
       "UserOut": {
@@ -10355,6 +12058,16 @@
             "title": "State",
             "type": "string"
           },
+          "suggestion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "title": {
             "anyOf": [
               {
@@ -10735,6 +12448,942 @@
           }
         },
         "summary": "Activity Stats",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/actions": {
+      "get": {
+        "description": "按状态列出待确认动作，默认只列出还没处理的。",
+        "operationId": "list_actions_api_admin_ai_actions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "pending",
+              "enum": [
+                "pending",
+                "running",
+                "executed",
+                "failed",
+                "rejected",
+                "expired"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingActionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "List Actions",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/actions/{action_id}/confirm": {
+      "post": {
+        "description": "用当前管理员的身份执行动作；执行失败时返回 status 为 failed 并带上原因。",
+        "operationId": "confirm_action_api_admin_ai_actions__action_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "title": "Action Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingActionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Confirm Action",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/actions/{action_id}/reject": {
+      "post": {
+        "operationId": "reject_action_api_admin_ai_actions__action_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "title": "Action Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingActionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Reject Action",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/presets": {
+      "get": {
+        "operationId": "list_presets_api_admin_ai_presets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "List Presets",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/providers": {
+      "get": {
+        "operationId": "list_providers_api_admin_ai_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiProvidersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "List Providers",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "create_provider_api_admin_ai_providers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiProviderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Create Provider",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/providers/{provider_id}": {
+      "delete": {
+        "operationId": "delete_provider_api_admin_ai_providers__provider_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Delete Provider",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "operationId": "update_provider_api_admin_ai_providers__provider_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiProviderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Update Provider",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/providers/{provider_id}/test": {
+      "post": {
+        "description": "发一次最小请求（列出模型），验证地址和 Key；结果同时记在提供方上。",
+        "operationId": "test_provider_api_admin_ai_providers__provider_id__test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Test Provider",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/roles": {
+      "get": {
+        "operationId": "get_roles_api_admin_ai_roles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Get Roles",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "operationId": "save_roles_api_admin_ai_roles_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RolesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Save Roles",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/roles/{role}/test": {
+      "post": {
+        "description": "用这个用途选的模型发一次最小请求，确认模型名可用；不计入用量。",
+        "operationId": "test_role_api_admin_ai_roles__role__test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "enum": [
+                "chat",
+                "task",
+                "embedding"
+              ],
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Test Role",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/semantic": {
+      "get": {
+        "description": "语义索引的进度。换向量模型后会自动重建，这里能看到进度。",
+        "operationId": "get_semantic_status_api_admin_ai_semantic_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Get Semantic Status",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/semantic/rebuild": {
+      "post": {
+        "description": "清空语义索引，由后台任务重新生成。",
+        "operationId": "rebuild_semantic_api_admin_ai_semantic_rebuild_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Rebuild Semantic",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/settings": {
+      "get": {
+        "operationId": "get_ai_settings_api_admin_ai_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Get Ai Settings",
+        "tags": [
+          "admin"
+        ]
+      },
+      "put": {
+        "operationId": "save_ai_settings_api_admin_ai_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Save Ai Settings",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/ai/usage": {
+      "get": {
+        "operationId": "get_usage_api_admin_ai_usage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "months",
+            "required": false,
+            "schema": {
+              "default": 6,
+              "maximum": 24,
+              "minimum": 1,
+              "title": "Months",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Get Usage",
         "tags": [
           "admin"
         ]
@@ -19467,6 +22116,68 @@
         ]
       }
     },
+    "/api/admin/works/batch-adopt-suggestions": {
+      "post": {
+        "description": "批量采用 AI 的匹配建议，每个作品用自己的建议；没有候选或已处理过的作品报告为失败。",
+        "operationId": "adopt_suggestions_batch_api_admin_works_batch_adopt_suggestions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RematchWorkBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchAssignmentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Adopt Suggestions Batch",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/admin/works/batch-assign": {
       "post": {
         "operationId": "assign_works_batch_api_admin_works_batch_assign_post",
@@ -19659,6 +22370,628 @@
         "summary": "Assign Work",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/api/admin/works/{work_id}/suggestion/adopt": {
+      "post": {
+        "description": "采用 AI 的匹配建议，等同于手动指定，之后同步不再改动。",
+        "operationId": "adopt_suggestion_api_admin_works__work_id__suggestion_adopt_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_id",
+            "required": true,
+            "schema": {
+              "title": "Work Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminItemDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Adopt Suggestion",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/works/{work_id}/suggestion/ignore": {
+      "post": {
+        "operationId": "ignore_suggestion_api_admin_works__work_id__suggestion_ignore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_id",
+            "required": true,
+            "schema": {
+              "title": "Work Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Ignore Suggestion",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/works/{work_id}/suggestion/reanalyze": {
+      "post": {
+        "description": "丢弃现有建议，稍后由后台任务重新分析。",
+        "operationId": "reanalyze_suggestion_api_admin_works__work_id__suggestion_reanalyze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_id",
+            "required": true,
+            "schema": {
+              "title": "Work Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Reanalyze Suggestion",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/works/{work_id}/suggestion/revert": {
+      "post": {
+        "description": "撤销 AI 自动匹配：作品回到待处理，且不再自动匹配同一个候选。",
+        "operationId": "revert_suggestion_api_admin_works__work_id__suggestion_revert_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_id",
+            "required": true,
+            "schema": {
+              "title": "Work Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Revert Suggestion",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/ai/ask-search": {
+      "post": {
+        "description": "把一句描述转成筛选条件并返回第一页结果。模型不可用时返回 502，客户端退回普通搜索。",
+        "operationId": "ask_search_api_ai_ask_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskSearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Ask Search",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/ai/ask-search/query": {
+      "post": {
+        "description": "修改筛选条件后重新查询，或翻页。不调用对话模型。",
+        "operationId": "ask_search_query_api_ai_ask_search_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Ask Search Query",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/ai/chats": {
+      "get": {
+        "operationId": "list_chats_api_ai_chats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "List Chats",
+        "tags": [
+          "ai"
+        ]
+      },
+      "post": {
+        "operationId": "create_chat_api_ai_chats_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Create Chat",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/ai/chats/{chat_id}": {
+      "delete": {
+        "operationId": "delete_chat_api_ai_chats__chat_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "title": "Chat Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Delete Chat",
+        "tags": [
+          "ai"
+        ]
+      },
+      "get": {
+        "operationId": "get_chat_api_ai_chats__chat_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "title": "Chat Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Get Chat",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/ai/chats/{chat_id}/messages": {
+      "post": {
+        "description": "提问并流式接收回答。断开连接即停止生成，已生成的部分会保存。",
+        "operationId": "send_message_api_ai_chats__chat_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "title": "Chat Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStream"
+                }
+              }
+            },
+            "description": "SSE 事件流（text/event-stream），事件结构见 ChatStream.events"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Send Message",
+        "tags": [
+          "ai"
         ]
       }
     },

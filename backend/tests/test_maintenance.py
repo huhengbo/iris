@@ -33,6 +33,8 @@ def test_only_enabled_and_due_tasks_run(client: TestClient, clock: FakeClock) ->
         # 只让本次断言的任务启用；字幕和插件更新检查各自有独立线程或网络请求
         connection.execute("UPDATE scheduled_task SET enabled = 0")
         connection.execute("UPDATE scheduled_task SET enabled = 1 WHERE key = 'cleanup_sessions'")
+        # 清理 AI 对话默认就是启用的（保留 30 天），这里只看被明确启用的任务
+        connection.execute("UPDATE scheduled_task SET enabled = 0 WHERE key = 'cleanup_ai_chats'")
         connection.execute(
             "INSERT INTO auth_session (user_id, token_hash, token_version, created_at, expires_at) "
             "VALUES ((SELECT id FROM user LIMIT 1), 'h', 1, '2020-01-01T00:00:00+00:00', "

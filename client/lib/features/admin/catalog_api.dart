@@ -39,6 +39,20 @@ final unmatchedWorksProvider = FutureProvider.autoDispose
       return PageOf.fromJson(response.data!, PendingWork.fromJson);
     });
 
+/// 是否会为未匹配的作品自动生成 AI 建议：配置了后台任务模型，并且没有关掉。
+/// 用来决定没有建议的行显示「AI 分析中」还是什么都不显示。
+final aiAnalysisEnabledProvider = FutureProvider.autoDispose<bool>((ref) async {
+  final dio = ref.watch(apiClientProvider);
+  try {
+    final roles = await dio.get<Map<String, dynamic>>('$_admin/ai/roles');
+    if (roles.data!['task'] == null) return false;
+    final settings = await dio.get<Map<String, dynamic>>('$_admin/ai/settings');
+    return settings.data!['suggest_matches'] as bool;
+  } on DioException {
+    return false;
+  }
+});
+
 /// status 是 unplaced（没有归入条目）或 ignored（附加内容）；reason 为空时不筛选
 final pendingFilesProvider = FutureProvider.autoDispose
     .family<PendingFilePage, ({String status, String? reason, int offset})>((
@@ -160,6 +174,37 @@ Future<BatchAssignmentReport> assignWorksBatch(
       'provider_id': ?providerId,
       'remote_id': remoteId,
     },
+  );
+  return BatchAssignmentReport.fromJson(response.data!);
+}
+
+/// 采用 AI 的匹配建议（等同于手动指定），返回条目 ID。
+Future<int> adoptSuggestion(Dio dio, int workId) async {
+  final response = await dio.post<Map<String, dynamic>>(
+    '$_admin/works/$workId/suggestion/adopt',
+  );
+  return response.data!['id'] as int;
+}
+
+Future<void> ignoreSuggestion(Dio dio, int workId) =>
+    dio.post<void>('$_admin/works/$workId/suggestion/ignore');
+
+/// 丢弃现有建议，稍后由后台任务重新分析。
+Future<void> reanalyzeSuggestion(Dio dio, int workId) =>
+    dio.post<void>('$_admin/works/$workId/suggestion/reanalyze');
+
+/// 撤销 AI 自动匹配：作品回到待处理，且不再自动匹配同一个候选。
+Future<void> revertSuggestion(Dio dio, int workId) =>
+    dio.post<void>('$_admin/works/$workId/suggestion/revert');
+
+/// 批量采用 AI 建议，每个作品用自己的建议。
+Future<BatchAssignmentReport> adoptSuggestionsBatch(
+  Dio dio,
+  List<int> workIds,
+) async {
+  final response = await dio.post<Map<String, dynamic>>(
+    '$_admin/works/batch-adopt-suggestions',
+    data: {'work_ids': workIds},
   );
   return BatchAssignmentReport.fromJson(response.data!);
 }

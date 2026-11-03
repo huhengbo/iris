@@ -8,6 +8,14 @@ from __future__ import annotations
 
 from zoneinfo import ZoneInfo
 
+from app.ai.actions import PendingActions
+from app.ai.ask import AskSearch
+from app.ai.chat import ChatService
+from app.ai.semantic import SemanticIndex
+from app.ai.service import AiService, ClientFactory, default_client_factory
+from app.ai.settings import AiSettings
+from app.ai.suggestions import SuggestionService
+from app.ai.tools import ToolRegistry
 from app.auth.throttle import LoginThrottle
 from app.auth.tokens import TokenSigner
 from app.auth.users import UserRepository
@@ -15,6 +23,7 @@ from app.auth.webdav import WebDavService
 from app.clock import Clock, SystemClock
 from app.config import AppConfig
 from app.container import AppContainer
+from app.crypto import SecretBox
 from app.db import Database
 from app.library.curation import Curation
 from app.library.images import ImageStore
@@ -50,6 +59,7 @@ def build_container(
     delete_executor: Executor | None = None,
     plugin_installer: DependencyInstaller | None = None,
     plugin_fetcher: SafeFetcher | None = None,
+    ai_client_factory: ClientFactory | None = None,
 ) -> AppContainer:
     clock = clock or SystemClock()
     database = Database(config.database_path)
@@ -94,6 +104,16 @@ def build_container(
     backups = BackupService(database, config.data_dir, clock, plugin_maintenance=packages)
     access_signer = TokenSigner(config.secret_key, "access-token")
     login_throttle = LoginThrottle(clock)
+    ai = AiService(
+        database,
+        clock,
+        SecretBox(config.secret_key, "ai-provider-key"),
+        ai_client_factory or default_client_factory,
+    )
+    tools = ToolRegistry()
+    ai_settings = AiSettings(database, clock)
+    actions = PendingActions(database, clock, tools, ai_settings)
+    semantic = SemanticIndex(database, clock, ai)
     plugins.start_enabled()
     resources = ResourceSources(plugins)
     online_subtitles = OnlineSubtitles(
@@ -132,6 +152,16 @@ def build_container(
         settings=settings,
         access_signer=access_signer,
         login_throttle=login_throttle,
+        ai=ai,
+        semantic=semantic,
+        tools=tools,
+        ai_settings=ai_settings,
+        actions=actions,
+        ask=AskSearch(database, clock, ai, tools, actions, semantic),
+        chat=ChatService(database, clock, ai, tools, actions),
+        suggestions=SuggestionService(
+            database, clock, ai, tools, actions, ai_settings, metadata.providers, curation
+        ),
         playback=playback_service,
         subtitles=online_subtitles,
         subtitle_auto=subtitle_auto,

@@ -38,6 +38,11 @@ def test_migrations_are_baseline_then_source_neutral() -> None:
         (4, "plugin_repositories"),
         (5, "collection_artwork"),
         (6, "admin_library_access"),
+        (7, "ai_providers"),
+        (8, "ai_pending_action"),
+        (9, "work_suggestion"),
+        (10, "item_embedding"),
+        (11, "ai_chat"),
     ]
 
 
@@ -252,6 +257,11 @@ def test_source_neutral_migration_renames_and_converts_scope_keys(
             (4, "plugin_repositories"),
             (5, "collection_artwork"),
             (6, "admin_library_access"),
+            (7, "ai_providers"),
+            (8, "ai_pending_action"),
+            (9, "work_suggestion"),
+            (10, "item_embedding"),
+            (11, "ai_chat"),
         ]
     finally:
         raw.close()

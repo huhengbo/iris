@@ -202,6 +202,7 @@ String _kindLabel(String kind) => switch (kind) {
   'scheduled:cleanup_images' => '定时清理图片',
   'scheduled:cleanup_sessions' => '定时清理登录会话',
   'scheduled:cleanup_play_events' => '定时清理播放记录',
+  'scheduled:cleanup_ai_chats' => '定时清理 AI 对话',
   'scheduled:refresh_metadata' => '定时刷新元数据',
   'scheduled:download_subtitles' => '定时下载字幕',
   'scheduled:empty_recycle_bin' => '定时清空回收站',

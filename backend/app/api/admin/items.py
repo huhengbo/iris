@@ -71,6 +71,8 @@ class ItemWorkOut(Out):
     id: int
     path: str
     manual: bool
+    # AI 自动匹配的结果；可以在条目操作里撤销（POST /admin/works/{id}/suggestion/revert）
+    ai_matched: bool = False
 
 
 class ItemVersionOut(Out):

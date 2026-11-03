@@ -9,6 +9,8 @@ import 'package:iris/features/admin/catalog_api.dart';
 import 'package:iris/features/admin/libraries_api.dart';
 import 'package:iris/features/admin/plugin_catalog_api.dart';
 import 'package:iris/features/admin/plugins_api.dart';
+import 'package:iris/features/ai/ai_chat_controller.dart';
+import 'package:iris/features/ai/ai_chat_models.dart';
 import 'package:iris/features/admin/tasks_api.dart';
 import 'package:iris/features/auth/auth_controller.dart';
 import 'package:iris/features/library/browse_api.dart';
@@ -374,6 +376,187 @@ void main() {
       expect(error.code, 'http_502');
       expect(error.statusCode, 502);
       expect(error.kind, ApiErrorKind.server);
+    });
+  });
+
+  group('AI chat models (ADR 0030, M58)', () {
+    test('ChatOut -> AiChatSummary', () {
+      final reads = _parse('ChatOut', AiChatSummary.fromJson);
+      _expectClientFieldsDeclared('ChatOut', reads);
+      expect(reads, {'id', 'title', 'created_at', 'updated_at'});
+    });
+
+    test('ChatDetailOut -> AiChatDetail', () {
+      final reads = _parse(
+        'ChatDetailOut',
+        (json) => AiChatDetail.fromJson(json, 'http://test', AiKeys()),
+      );
+      _expectClientFieldsDeclared('ChatDetailOut', reads);
+      expect(reads, {'id', 'title', 'created_at', 'updated_at', 'messages'});
+    });
+
+    test('ChatMessageOut -> AiMessage', () {
+      final reads = _parse(
+        'ChatMessageOut',
+        (json) => AiMessage.fromJson(json, 'http://test', key: 0, question: ''),
+      );
+      _expectClientFieldsDeclared('ChatMessageOut', reads);
+      expect(reads, {
+        'id',
+        'role',
+        'content',
+        'steps',
+        'items',
+        'suggestions',
+        'thinking_seconds',
+        'status',
+        'error',
+      });
+    });
+
+    test(
+      'ChatMessageOut role and status values are the ones the client maps',
+      () {
+        final properties =
+            _schema('ChatMessageOut')['properties'] as Map<String, dynamic>;
+        expect(properties['role']['enum'], ['user', 'assistant']);
+        expect(properties['status']['enum'], ['done', 'stopped', 'error']);
+        // thinking_seconds 和 error 在没有时为 null，而不是缺省
+        expect(_nullable(properties['thinking_seconds']), isTrue);
+        expect(_nullable(properties['error']), isTrue);
+        final required = _schema('ChatMessageOut')['required'] as List<dynamic>;
+        expect(required, containsAll(['thinking_seconds', 'error']));
+      },
+    );
+
+    test('ItemCardOut -> MediaCard (AI item cards reuse the poster card)', () {
+      final reads = _parse(
+        'ItemCardOut',
+        (json) => MediaCard.fromJson(json, 'http://test'),
+      );
+      _expectClientFieldsDeclared('ItemCardOut', reads);
+      expect(reads, containsAll(['id', 'library_id', 'kind', 'title']));
+    });
+
+    test('ChatStepOut -> AiStep', () {
+      final reads = _parse('ChatStepOut', AiStep.fromJson);
+      _expectClientFieldsDeclared('ChatStepOut', reads);
+      expect(reads, {'name', 'label', 'summary', 'ok', 'item_ids'});
+    });
+
+    // SSE 各事件的 data：字段名、必填、可空都和快照一致
+    final events = <String, (String, Object? Function(Map<String, dynamic>))>{
+      'StartData': ('start', AiStarted.fromJson),
+      'ThinkingData': ('thinking', AiThinking.fromJson),
+      'ToolStartData': ('tool_start', AiToolStarted.fromJson),
+      'ToolEndData': (
+        'tool_end',
+        (json) => AiToolEnded.fromJson(json, 'http://test'),
+      ),
+      'TextData': ('text', AiTextDelta.fromJson),
+      'SuggestionsData': ('suggestions', AiSuggestions.fromJson),
+      'DoneData': ('done', AiDone.fromJson),
+      'ErrorData': ('error', AiFailed.fromJson),
+    };
+    for (final entry in events.entries) {
+      final (event, parse) = entry.value;
+      test('${entry.key} -> SSE "$event"', () {
+        final reads = _parse(entry.key, parse);
+        _expectClientFieldsDeclared(entry.key, reads);
+        // 客户端读取的正好是快照声明的全部字段，新增字段会在这里提醒我们
+        final declared =
+            (_schema(entry.key)['properties'] as Map<String, dynamic>).keys;
+        expect(reads, declared.toSet());
+      });
+    }
+
+    test('thinking.seconds is nullable and required', () {
+      final schema = _schema('ThinkingData');
+      final properties = schema['properties'] as Map<String, dynamic>;
+      expect(_nullable(properties['seconds']), isTrue);
+      expect(schema['required'], containsAll(['delta', 'seconds']));
+      // seconds 为 null 是思考增量，有值是思考结束
+      expect(
+        AiThinking.fromJson({'delta': 'x', 'seconds': null}).seconds,
+        isNull,
+      );
+      expect(AiThinking.fromJson({'delta': '', 'seconds': 2}).seconds, 2.0);
+    });
+
+    test(
+      'the event names in ChatStream are exactly the ones the client parses',
+      () {
+        final stream = _schema('ChatStream');
+        final item =
+            (stream['properties']['events']['items'] as Map<String, dynamic>);
+        final mapping =
+            (item['discriminator']['mapping'] as Map<String, dynamic>);
+        expect(mapping.keys.toSet(), {for (final e in events.values) e.$1});
+        for (final MapEntry(key: name, value: ref) in mapping.entries) {
+          // #/components/schemas/StartEvent -> StartData
+          final eventSchema = _schema('$ref'.split('/').last);
+          expect(eventSchema['properties']['event']['const'], name);
+          final dataRef = eventSchema['properties']['data'][r'$ref'] as String;
+          expect(events.containsKey(dataRef.split('/').last), isTrue);
+          expect(events[dataRef.split('/').last]!.$1, name);
+          expect(
+            AiEvent.parse(
+              name,
+              _minimalBody(dataRef.split('/').last),
+              'http://test',
+            ),
+            isNotNull,
+          );
+        }
+        // 不认识的事件被忽略，而不是报错
+        expect(AiEvent.parse('future_event', const {}, 'http://test'), isNull);
+      },
+    );
+
+    test('ToolEndData items are the same card shape as the poster wall', () {
+      final items =
+          (_schema('ToolEndData')['properties']['items']
+                  as Map<String, dynamic>)['items']
+              as Map<String, dynamic>;
+      expect(items[r'$ref'], '#/components/schemas/ItemCardOut');
+      final message =
+          _schema('ChatMessageOut')['properties']['items']
+              as Map<String, dynamic>;
+      expect(
+        (message['items'] as Map<String, dynamic>)[r'$ref'],
+        '#/components/schemas/ItemCardOut',
+      );
+    });
+
+    test('SendMessageRequest: content is required, 1..2000 chars', () {
+      final schema = _schema('SendMessageRequest');
+      expect(schema['required'], ['content']);
+      final content = schema['properties']['content'] as Map<String, dynamic>;
+      expect(content['minLength'], 1);
+      expect(content['maxLength'], aiMaxQuestionLength);
+    });
+
+    test('paths and status codes the client relies on', () {
+      final paths = _spec['paths'] as Map<String, dynamic>;
+      expect(paths['/api/ai/chats']['get']['responses'], contains('200'));
+      expect(paths['/api/ai/chats']['post']['responses'], contains('201'));
+      expect(
+        paths['/api/ai/chats/{chat_id}']['delete']['responses'],
+        contains('204'),
+      );
+      expect(
+        paths['/api/ai/chats/{chat_id}']['get']['responses'],
+        contains('200'),
+      );
+      final send = paths['/api/ai/chats/{chat_id}/messages']['post'];
+      expect(
+        (send['responses']['200']['content'] as Map<String, dynamic>).keys,
+        ['text/event-stream'],
+      );
+      expect(
+        send['requestBody']['content']['application/json']['schema'][r'$ref'],
+        '#/components/schemas/SendMessageRequest',
+      );
     });
   });
 }

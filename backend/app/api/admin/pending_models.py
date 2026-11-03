@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.schemas import Out
@@ -38,6 +40,38 @@ class CandidateOut(BaseModel):
     reasons: list[str]
 
 
+class SuggestionStepOut(BaseModel):
+    # 模型调用的工具：metadata_search、metadata_details、metadata_season
+    tool: str
+    # 进行中的人话文案，例如「正在搜索「沙丘」…」
+    label: str
+    # 完成后的一句话结果
+    summary: str
+    ok: bool
+
+
+class SuggestionOut(BaseModel):
+    """后台任务模型给出的匹配建议。没有 remote_id 表示模型查过但没有把握。"""
+
+    id: int
+    provider_id: str | None
+    remote_id: str | None
+    title: str | None
+    original_title: str | None
+    year: int | None
+    # 条目在插件网站上的页面
+    url: str | None
+    # 模型自评的把握，0 到 1
+    confidence: float
+    reason: str
+    steps: list[SuggestionStepOut]
+    model: str
+    # pending 待处理；adopted 已采用；ignored 已忽略；
+    # auto_matched AI 已自动匹配；reverted 自动匹配已撤销
+    status: Literal["pending", "adopted", "ignored", "auto_matched", "reverted"]
+    created_at: str
+
+
 class WorkOut(BaseModel):
     id: int
     library_id: int
@@ -52,6 +86,8 @@ class WorkOut(BaseModel):
     candidates: list[CandidateOut]
     file_count: int
     item: ItemRefOut | None
+    # 最新的 AI 匹配建议；没有分析过（或没有配置 AI）时为 null
+    suggestion: SuggestionOut | None = None
 
 
 class WorkPage(BaseModel):
