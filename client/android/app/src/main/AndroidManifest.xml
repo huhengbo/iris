@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 投屏搜索电视（SSDP 组播），安卓默认丢弃组播包，搜索期间拿组播锁（ADR 0018） -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- 应用内升级：下载好的新版本交给系统安装器（ADR 0031） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- 同一个 APK 也装在 Android TV 上：不要求触屏，Leanback 可选（M9） -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -40,6 +42,16 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- 应用内升级：把缓存里的安装包以 content:// 地址交给系统安装器 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

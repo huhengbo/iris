@@ -6,24 +6,34 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/section_title.dart';
 import '../admin/admin_widgets.dart' show AdminListWidth;
 import '../play/play_api.dart';
+import '../update/update_controller.dart' show updateSupportedProvider;
+import '../update/update_tiles.dart'
+    show AutoCheckUpdateTile, DownloadPrefixTile;
 import 'preferences_page.dart'
     show DefaultPlayerTile, HomeFavoritesTile, SubtitleLanguageTile;
 
 /// 「本机 › 常规」：只影响这台设备的显示，不写服务器。
-class LocalGeneralPage extends StatelessWidget {
+class LocalGeneralPage extends ConsumerWidget {
   const LocalGeneralPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(title: const Text('常规')),
       body: AdminListWidth(
         bottom: 32,
         builder: (padding) => ListView(
           padding: padding,
-          children: const [
-            SectionTitle('首页', first: true),
-            HomeFavoritesTile(),
+          children: [
+            const SectionTitle('首页', first: true),
+            const HomeFavoritesTile(),
+            // 应用内升级只在 Android 上有（ADR 0031）
+            if (ref.watch(updateSupportedProvider)) ...const [
+              SectionTitle('更新'),
+              AutoCheckUpdateTile(),
+              DownloadPrefixTile(),
+              _Note('国内网络访问 GitHub 慢时填写加速前缀，检查更新和下载安装包都会经过它。'),
+            ],
           ],
         ),
       ),

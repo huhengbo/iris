@@ -108,6 +108,8 @@ curl -fsSL https://raw.githubusercontent.com/huhengbo/iris/main/scripts/install.
 
 Android / Android TV 的 APK 在 [Releases](https://github.com/huhengbo/iris/releases) 页下载，按设备架构选 `arm64-v8a`（多数手机和电视盒子）、`armeabi-v7a`（老设备）或 `x86_64`（模拟器）。APK 使用固定的 release 签名，之后的版本可以直接覆盖安装。
 
+客户端会自动检查更新：读取最新 Release 里的 `update.json`，按设备架构下载 APK 并校验 sha256。国内网络访问 GitHub 较慢时，可以在「设置 → 本机 → 常规」配置下载加速前缀。
+
 ## 本地开发
 
 需要：Python 3.13 和 [uv](https://docs.astral.sh/uv/)、Flutter 3.47（Dart 3.13）、Android SDK（构建 APK 时）。
@@ -191,7 +193,7 @@ scripts/check.sh
 
 1. 日常变更记在 [CHANGELOG.md](CHANGELOG.md) 的 `[Unreleased]` 下。
 2. 发版时把它改成 `## [x.y.z] - 日期`，同步更新 `VERSION`、`backend/pyproject.toml` 和 `client/pubspec.yaml`（versionCode = x\*10000 + y\*100 + z，升级覆盖安装要求它单调递增）。
-3. 提交后推送 `vX.Y.Z` tag：流水线校验版本一致，发布 `X.Y.Z`、`X.Y`、`latest` 镜像，构建并签名 APK，并用 CHANGELOG 对应章节创建 GitHub Release。
+3. 提交后推送 `vX.Y.Z` tag：流水线校验版本一致，发布 `X.Y.Z`、`X.Y`、`latest` 镜像，构建并签名 APK，用 CHANGELOG 对应章节创建 GitHub Release，同时生成并上传 `update.json`（各架构 APK 的地址、大小和 sha256），客户端据此检查更新。
 4. 推送到 `main` 只跑 CI，不发布。
 
 ## 已知限制

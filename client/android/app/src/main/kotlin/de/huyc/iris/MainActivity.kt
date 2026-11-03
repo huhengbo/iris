@@ -13,6 +13,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var updateChannel: UpdateChannel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,10 +42,14 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        // 应用内升级：取架构、校验和调起安装器（lib/features/update/）
+        updateChannel = UpdateChannel(this, flutterEngine.dartExecutor.binaryMessenger)
     }
 
     override fun onDestroy() {
         releaseMulticastLock()
+        updateChannel?.dispose()
+        updateChannel = null
         super.onDestroy()
     }
 

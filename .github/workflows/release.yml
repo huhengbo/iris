@@ -91,7 +91,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           uv run --python 3.13 scripts/version.py notes > release-notes.md
+          # 客户端升级清单：客户端请求 releases/latest/download/update.json 检查更新
+          uv run --python 3.13 scripts/version.py manifest client/build/app/outputs/flutter-apk > update.json
           gh release create "$GITHUB_REF_NAME" \
             --title "光圈 $GITHUB_REF_NAME" \
             --notes-file release-notes.md \
-            client/build/app/outputs/flutter-apk/app-*-release.apk
+            client/build/app/outputs/flutter-apk/app-*-release.apk \
+            update.json

@@ -4,6 +4,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../app/launch_splash.dart';
 import '../../app/theme.dart';
+import '../update/update_controller.dart' show updateSupportedProvider;
+import '../update/update_tiles.dart' show CheckUpdateTile;
 
 /// 客户端版本，如「0.1.0 (3)」；括号里是构建号，没有时只显示版本号。
 final appVersionProvider = FutureProvider<String>((ref) async {
@@ -13,7 +15,7 @@ final appVersionProvider = FutureProvider<String>((ref) async {
       : '${info.version} (${info.buildNumber})';
 });
 
-/// 关于：目前只有标志和版本号，其他内容后续补充。
+/// 关于：标志、版本号，Android 上还有检查更新。
 class AboutPage extends ConsumerWidget {
   const AboutPage({super.key});
 
@@ -54,6 +56,11 @@ class AboutPage extends ConsumerWidget {
             textAlign: TextAlign.center,
             style: textTheme.bodySmall!.copyWith(color: CinemaColors.text2),
           ),
+          // 应用内升级只在 Android 上有（ADR 0031）
+          if (ref.watch(updateSupportedProvider)) ...[
+            const SizedBox(height: 24),
+            const CheckUpdateTile(),
+          ],
         ],
       ),
     );

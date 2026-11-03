@@ -35,6 +35,7 @@ import '../features/search/search_page.dart';
 import '../features/servers/servers_page.dart';
 import '../features/tv/tv_home_page.dart';
 import '../features/tv/tv_shell.dart';
+import '../features/update/update_tiles.dart' show UpdateAutoCheck;
 import '../features/watchlist/watchlist_page.dart';
 import 'tv.dart' show televisionProvider;
 import 'motion.dart';
@@ -178,9 +179,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => _Sides(PersonPage(id: _id(state))),
       ),
       StatefulShellRoute.indexedStack(
-        builder: (context, state, shell) => tv
-            ? TvShell(navigationShell: shell)
-            : AppShell(navigationShell: shell),
+        // 进入主界面后在后台检查一次 App 更新（只在 Android 上）
+        builder: (context, state, shell) => UpdateAutoCheck(
+          child: tv
+              ? TvShell(navigationShell: shell)
+              : AppShell(navigationShell: shell),
+        ),
         branches: [
           StatefulShellBranch(
             routes: [
