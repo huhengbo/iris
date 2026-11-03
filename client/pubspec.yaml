@@ -1,7 +1,7 @@
 name: iris
 description: "光圈：自托管影视库的客户端"
 publish_to: 'none'
-version: 0.1.0+100
+version: 0.2.0+200
 
 environment:
   sdk: ^3.13.2

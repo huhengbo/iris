@@ -101,8 +101,8 @@ curl -fsSL https://raw.githubusercontent.com/huhengbo/iris/main/scripts/install.
 
 | 场景 | 标签 |
 |---|---|
-| 正式版本 | `0.1.0` |
-| 当前小版本的最新补丁 | `0.1` |
+| 正式版本 | `0.2.0` |
+| 当前小版本的最新补丁 | `0.2` |
 | 最新正式版本 | `latest` |
 
 Android / Android TV 的 APK 在 [Releases](https://github.com/huhengbo/iris/releases) 页下载，按设备架构选 `arm64-v8a`（多数手机和电视盒子）、`armeabi-v7a`（老设备）或 `x86_64`（模拟器）。APK 使用固定的 release 签名，之后的版本可以直接覆盖安装。
