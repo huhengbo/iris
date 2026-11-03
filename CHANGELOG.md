@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-03
+
 ### ✨ 新功能
 
 - Android / Android TV 应用内升级：客户端读取最新 Release 的 `update.json`，按设备架构下载 APK、校验 sha256 后调起系统安装器；国内网络可以在「设置 → 本机 → 常规」配置下载加速前缀。发布流水线会随 APK 一起生成并上传 `update.json`。
