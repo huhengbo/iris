@@ -105,7 +105,7 @@ class _UserTile extends ConsumerWidget {
       user.isAdmin ? '管理员' : '普通用户',
       if (user.disabled) '已禁用',
       if (isSelf) '当前账号',
-      if (!user.isAdmin && entry.allLibraries) '全部资料库',
+      if (entry.allLibraries) '全部资料库',
       if (!user.isAdmin && !user.allowSubtitleDownload) '禁止下载字幕',
     ];
     return FocusRing(
@@ -130,12 +130,10 @@ class _UserTile extends ConsumerWidget {
           tooltip: '管理 ${user.username}',
           onSelected: (action) => _run(context, ref, action),
           itemBuilder: (_) => [
-            // 管理员总能看到全部资料库，不需要分配
-            if (!user.isAdmin)
-              const PopupMenuItem(
-                value: _UserAction.libraries,
-                child: Text('资料库权限'),
-              ),
+            const PopupMenuItem(
+              value: _UserAction.libraries,
+              child: Text('资料库权限'),
+            ),
             if (!user.isAdmin)
               CheckedPopupMenuItem(
                 key: const ValueKey('user-subtitle-download'),

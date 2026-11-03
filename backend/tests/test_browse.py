@@ -153,8 +153,28 @@ def test_new_user_sees_existing_libraries_but_not_later_ones(
     assert response.json() == {"library_ids": [first["id"]], "all_libraries": False}
     user = bearer(login(client, "alice", "alice-password"))
     assert [lib["id"] for lib in get(client, user, "/libraries")] == [first["id"]]
-    # 管理员始终看到全部资料库
+    # 首个管理员开着「全部资料库」，看到全部
     assert [lib["id"] for lib in get(client, admin, "/libraries")] == [first["id"], second["id"]]
+
+
+def test_admin_library_scope_is_configurable_like_a_user(
+    client: TestClient,
+    admin: dict[str, str],
+    admin_tokens: dict[str, str],
+    cloud115: FakeCloud115,
+) -> None:
+    first = create_library(client, admin, "电影", "movie", cloud115.make_path("影视/电影"))
+    second = create_library(client, admin, "剧集", "series", cloud115.make_path("影视/剧集"))
+    boss = create_user(client, admin_tokens, "boss", "boss-password", role="admin")
+    set_access(client, boss["id"], [first["id"]])
+
+    boss_headers = bearer(login(client, "boss", "boss-password"))
+    assert [lib["id"] for lib in get(client, boss_headers, "/libraries")] == [first["id"]]
+    missing(client, boss_headers, f"/libraries/{second['id']}")
+    # 管理功能不受可见范围影响
+    listed = client.get("/api/admin/libraries", headers=boss_headers)
+    assert listed.status_code == 200
+    assert {lib["id"] for lib in listed.json()} == {first["id"], second["id"]}
 
 
 def test_user_without_access_sees_nothing_of_the_library(

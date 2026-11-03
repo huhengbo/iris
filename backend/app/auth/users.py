@@ -25,7 +25,7 @@ class User:
     disabled: bool
     token_version: int
     created_at: str
-    # 能访问全部资料库，包括以后新建的；管理员不看它，始终能访问全部
+    # 能访问全部资料库，包括以后新建的；管理员也按它和分配的资料库决定
     all_libraries: bool = False
     last_seen_at: str | None = None
     # 普通用户是否可以下载在线字幕；管理员始终可以
@@ -143,7 +143,7 @@ class UserRepository:
         )
 
     def library_ids(self, user_id: int) -> builtins.list[int]:
-        """分配给用户的资料库。管理员不受它限制，见 visible_library_ids。"""
+        """分配给用户的资料库。打开 all_libraries 时它不起作用，见 visible_library_ids。"""
         self.require(user_id)
         rows = self._db.execute(
             "SELECT a.library_id FROM library_access a JOIN library l ON l.id = a.library_id "

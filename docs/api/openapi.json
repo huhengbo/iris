@@ -18427,7 +18427,7 @@
     },
     "/api/admin/users/{user_id}/libraries": {
       "get": {
-        "description": "分配给用户的资料库。管理员始终能访问全部资料库，不受这里限制。",
+        "description": "分配给用户的资料库，管理员和普通用户一样按这里配置。",
         "operationId": "get_library_access_api_admin_users__user_id__libraries_get",
         "parameters": [
           {

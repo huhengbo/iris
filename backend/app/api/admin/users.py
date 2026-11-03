@@ -101,7 +101,7 @@ class LibraryAccessBody(BaseModel):
 def get_library_access(
     user_id: int, _: AdminUser, db: ReadDb, clock: AppClock
 ) -> LibraryAccessBody:
-    """分配给用户的资料库。管理员始终能访问全部资料库，不受这里限制。"""
+    """分配给用户的资料库，管理员和普通用户一样按这里配置。"""
     users = UserRepository(db, clock)
     return LibraryAccessBody(
         library_ids=users.library_ids(user_id),

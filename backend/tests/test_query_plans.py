@@ -17,7 +17,7 @@ from app.library.item_batch import _STATUS_SQL
 from tests.conftest import FakeClock
 
 NOW = "2026-01-01T00:00:00+00:00"
-ADMIN = User(1, "admin", "admin", False, 1, NOW)
+ADMIN = User(1, "admin", "admin", False, 1, NOW, all_libraries=True)
 
 
 @pytest.fixture

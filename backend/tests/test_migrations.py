@@ -37,6 +37,7 @@ def test_migrations_are_baseline_then_source_neutral() -> None:
         (3, "source_busy"),
         (4, "plugin_repositories"),
         (5, "collection_artwork"),
+        (6, "admin_library_access"),
     ]
 
 
@@ -250,6 +251,7 @@ def test_source_neutral_migration_renames_and_converts_scope_keys(
             (3, "source_busy"),
             (4, "plugin_repositories"),
             (5, "collection_artwork"),
+            (6, "admin_library_access"),
         ]
     finally:
         raw.close()
@@ -343,3 +345,29 @@ def test_source_busy_migration_renames_wait_reasons(tmp_path: Path, clock: FakeC
     finally:
         raw.close()
     assert reasons == ["source_busy", "source_busy", "rate_limited", None]
+
+
+def test_admin_library_access_migration_keeps_existing_admins_seeing_everything(
+    tmp_path: Path, clock: FakeClock
+) -> None:
+    database = Database(tmp_path / "admins.db")
+    connection = sqlite3.connect(database.path)
+    try:
+        apply_migrations(connection, [m for m in load_migrations() if m.version < 6], clock)
+        connection.execute(
+            "INSERT INTO user (username, password_hash, role, created_at, updated_at) "
+            "VALUES ('root', 'x', 'admin', ?, ?), ('bob', 'x', 'user', ?, ?)",
+            (NOW, NOW, NOW, NOW),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    database.migrate(clock)
+
+    raw = sqlite3.connect(database.path)
+    try:
+        flags = dict(raw.execute("SELECT username, all_libraries FROM user"))
+    finally:
+        raw.close()
+    assert flags == {"root": 1, "bob": 0}

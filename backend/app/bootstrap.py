@@ -157,4 +157,4 @@ def _bootstrap_admin(database: Database, clock: Clock, config: AppConfig) -> Non
     with database.session() as connection:
         users = UserRepository(connection, clock)
         if not users.has_admin():
-            users.create(config.admin_username, config.admin_password, "admin")
+            users.create(config.admin_username, config.admin_password, "admin", all_libraries=True)

@@ -292,23 +292,21 @@ class _CreateUserDialogState extends ConsumerState<_CreateUserDialog> {
                             setState(() => _allowSubtitleDownload = value),
                 ),
               ),
-            // 管理员总能看到全部资料库，不需要分配
-            if (_role == 'user')
-              ...switch (ref.watch(adminLibrariesProvider).value) {
-                final libraries? when libraries.isNotEmpty => [
-                  const SizedBox(height: 16),
-                  _LibraryAccessFields(
-                    libraries: libraries,
-                    access:
-                        _access ??
-                        (ids: {for (final l in libraries) l.id}, all: false),
-                    enabled: !_submitting,
-                    onChanged: (value) => setState(() => _access = value),
-                  ),
-                ],
-                // 资料库还没加载出来或者没有资料库时不显示，按默认分配
-                _ => const <Widget>[],
-              },
+            ...switch (ref.watch(adminLibrariesProvider).value) {
+              final libraries? when libraries.isNotEmpty => [
+                const SizedBox(height: 16),
+                _LibraryAccessFields(
+                  libraries: libraries,
+                  access:
+                      _access ??
+                      (ids: {for (final l in libraries) l.id}, all: false),
+                  enabled: !_submitting,
+                  onChanged: (value) => setState(() => _access = value),
+                ),
+              ],
+              // 资料库还没加载出来或者没有资料库时不显示，按默认分配
+              _ => const <Widget>[],
+            },
             if (_error != null) ...[
               const SizedBox(height: 12),
               Semantics(

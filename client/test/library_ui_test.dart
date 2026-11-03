@@ -2525,10 +2525,10 @@ void main() {
         });
     }, overrides: [authControllerProvider.overrideWith(_SignedInAdmin.new)]);
 
-    // 管理员总能看到全部资料库，菜单里没有这一项
+    // 管理员和普通用户一样可以配置资料库权限
     await tester.tap(find.byTooltip('管理 admin'));
     await tester.pumpAndSettle();
-    expect(find.text('资料库权限'), findsNothing);
+    expect(find.text('资料库权限'), findsOneWidget);
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
 

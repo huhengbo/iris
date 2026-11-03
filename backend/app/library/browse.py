@@ -96,9 +96,9 @@ _SORT_COLUMN: dict[SortKey, str] = {
 
 
 def visible_library_ids(connection: sqlite3.Connection, user: User) -> list[int]:
-    """管理员和开了「全部资料库」的用户看到全部，其他普通用户只看到分配给自己的。
+    """开了「全部资料库」的用户看到全部，其他用户只看到分配给自己的，管理员也一样。
     按资料库的排序返回。"""
-    if user.is_admin or user.all_libraries:
+    if user.all_libraries:
         rows = connection.execute("SELECT id FROM library ORDER BY sort_order, id").fetchall()
     else:
         rows = connection.execute(
