@@ -277,6 +277,7 @@ Future<void> play(BuildContext context, PlayRequest request) async {
       castable: platform.players.contains(ExternalPlayer.cast),
       cellularConfirmed: cellularConfirmed,
       playlistId: request.playlistId,
+      itemId: request.itemId,
     );
     // 在播放器里选了电视时带回来，接着投屏
     final handoff = await GoRouter.of(context)

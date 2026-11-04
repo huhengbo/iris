@@ -16,6 +16,7 @@ import '../../core/format.dart';
 import '../../core/network_status.dart';
 import '../../core/providers.dart';
 import '../auth/auth_controller.dart';
+import '../library/browse_api.dart';
 import '../subtitles/subtitle_search_sheet.dart';
 import '../subtitles/subtitles_api.dart';
 import 'cast_page.dart';
@@ -24,13 +25,15 @@ import 'play_api.dart';
 
 part 'player_args.dart';
 part 'player_controls.dart';
+part 'player_episodes.dart';
 part 'player_gestures.dart';
 part 'player_tv_controls.dart';
 part 'player_widgets.dart';
 
-/// 横屏沉浸式播放。触屏：点按显示/隐藏控制条，双击左右快退快进、中间暂停，
-/// 长按 2 倍速，左右滑动拖进度，左半屏上下滑调亮度、右半屏调音量。
-/// 遥控器/键盘：控制条隐藏时左右快退快进，确认键暂停并呼出控制条。
+/// 横屏沉浸式播放，控制层照搬网易爆米花（ADR 0032）。触屏：点按显示/隐藏控制条，
+/// 双击左右快退快进、中间暂停，长按 2 倍速，左右滑动拖进度，左半屏上下滑调亮度、
+/// 右半屏调音量；锁屏后只有点按呼出锁。遥控器/键盘：控制条隐藏时左右快退快进，
+/// 确认键暂停并呼出控制条。
 class PlayerPage extends ConsumerStatefulWidget {
   const PlayerPage({super.key, required this.args});
 
@@ -64,6 +67,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   bool _playing = false;
   bool _buffering = true;
+  double _bufferingPercent = 0;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   String? _error;
@@ -87,6 +91,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 画面填满屏幕（裁掉超出的部分）。默认完整显示；片源把黑边压进画面、
   /// 或画面比例和屏幕差得多时，填满才像全屏。本机记住这个选择
   bool _fill = false;
+
+  /// 锁屏：控制层只剩锁，画面手势和返回键都不起作用，免得躺着看时误触
+  bool _locked = false;
+
+  /// 手动转成竖屏（左侧的旋转按钮），默认横屏
+  bool _portrait = false;
+
+  /// 在放剧集时这一集在剧里的位置，底栏的上一集 / 下一集 / 选集靠它
+  EpisodeQueue? _episodes;
+
+  /// 正在签发要切过去的那一集，挡住连点
+  bool _switching = false;
 
   /// 拖动进度条或滑动屏幕时的目标位置
   Duration? _scrub;
@@ -133,6 +149,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         }
       }),
       stream.buffering.listen((v) => setState(() => _buffering = v)),
+      stream.bufferingPercentage.listen(
+        (v) => setState(() => _bufferingPercent = v),
+      ),
       stream.position.listen((v) => setState(() => _position = v)),
       stream.duration.listen((v) {
         setState(() => _duration = v);
@@ -160,6 +179,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       });
     }
     unawaited(_startPlayback());
+    unawaited(_loadEpisodes());
   }
 
   @override
@@ -697,7 +717,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   // ---- 弹层 ----
 
   /// 齿轮面板：音频、字幕、播放速度、画面都在这里，选中立即生效。
-  Future<void> _openSettings() async {
+  /// 底栏的倍速、音轨、字幕按钮只打开其中一段（[only]）。
+  Future<void> _openSettings({PlayerSettingsSection? only}) async {
     _hideTimer?.cancel();
     final tracks = _player.state.tracks;
     final current = _player.state.track;
@@ -720,8 +741,120 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       onRate: (rate) => unawaited(_setRate(rate)),
       onFill: (fill) => unawaited(_setFill(fill)),
       onSearchSubtitles: _searchSubtitles,
+      only: only,
     );
     if (mounted) _scheduleHide();
+  }
+
+  // ---- 选集 ----
+
+  /// 只有从剧集详情进来的才有剧集上下文；播放列表连播自己管下一项
+  Future<void> _loadEpisodes() async {
+    final itemId = widget.args.itemId;
+    if (itemId == null || widget.args.playlistId != null) return;
+    try {
+      final queue = await loadEpisodeQueue(
+        _dio,
+        ref.read(apiBaseUrlProvider),
+        itemId: itemId,
+        title: widget.args.title,
+      );
+      if (mounted) setState(() => _episodes = queue);
+    } on DioException {
+      // 取不到分集只是少了上一集 / 下一集按钮，不影响播放
+    }
+  }
+
+  Future<void> _playNeighbour(int step) async {
+    final queue = _episodes;
+    if (queue == null || _switching) return;
+    _hideTimer?.cancel();
+    try {
+      final episode = await queue.neighbour(
+        _dio,
+        ref.read(apiBaseUrlProvider),
+        step,
+      );
+      if (episode != null) {
+        await _switchEpisode(episode);
+      } else {
+        _showToast(step > 0 ? '已经是最后一集' : '已经是第一集');
+      }
+    } on DioException {
+      _showToast('没能取到${step > 0 ? '下一集' : '上一集'}，稍后再试');
+    }
+    if (mounted) _scheduleHide();
+  }
+
+  Future<void> _openEpisodes() async {
+    final queue = _episodes;
+    if (queue == null) return;
+    _hideTimer?.cancel();
+    final episode = await showEpisodePicker(context, queue);
+    if (!mounted) return;
+    if (episode != null && episode.id != queue.current.id) {
+      await _switchEpisode(episode);
+    }
+    if (mounted) _scheduleHide();
+  }
+
+  /// 存好这一集的进度，签发另一集，换掉当前播放页（和播放列表连播一样）。
+  /// 签发失败时留在这一集，提示原因。
+  Future<void> _switchEpisode(Episode episode) async {
+    if (_switching) return;
+    setState(() => _switching = true);
+    _showToast('正在切换到第 ${episode.number} 集…');
+    await _report().timeout(const Duration(seconds: 3), onTimeout: () {});
+    try {
+      final ticket = await issuePlay(
+        _dio,
+        PlayTarget.episode(episode.id),
+        ref.read(playPlatformProvider),
+        builtin: true,
+      );
+      if (!mounted) return;
+      _exiting = true;
+      await _player.pause();
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => PlayerPage(
+            args: PlayerArgs.fromTicket(
+              ticket,
+              _dio.options.baseUrl,
+              castable: widget.args.castable,
+              cellularConfirmed: _cellularConfirmed,
+              itemId: widget.args.itemId,
+            ),
+          ),
+        ),
+      );
+    } on DioException {
+      if (!mounted) return;
+      setState(() => _switching = false);
+      _showToast('没能切换到第 ${episode.number} 集，稍后再试');
+    }
+  }
+
+  // ---- 锁屏和旋转 ----
+
+  void _toggleLock() {
+    setState(() => _locked = !_locked);
+    _showToast(_locked ? '已锁屏' : '已解锁');
+    _scheduleHide();
+  }
+
+  Future<void> _rotate() async {
+    setState(() => _portrait = !_portrait);
+    _scheduleHide();
+    await SystemChrome.setPreferredOrientations(
+      _portrait
+          ? const [DeviceOrientation.portraitUp]
+          : const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ],
+    );
   }
 
   /// 播放中搜索并下载在线字幕。拿到带签名的 path 后直接用当前服务器地址
@@ -767,6 +900,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        // 锁屏时返回键不退出，只把锁呼出来
+        if (_locked) {
+          _showControls();
+          _showToast('已锁屏，先点右侧的锁解锁');
+          return;
+        }
         // 电视上返回键先收起控制层，再按一次才退出
         if (_tv && _controls) {
           _hideControls();
@@ -799,26 +938,35 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () => _controls ? _hideControls() : _showControls(),
-                    onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
-                    onDoubleTap: () => _onDoubleTap(width),
-                    onLongPressStart: (_) => _onLongPressStart(),
-                    onLongPressEnd: (_) => _onLongPressEnd(),
-                    onHorizontalDragStart: (d) => _onDragStart(d, size),
-                    onHorizontalDragUpdate: (d) => _onDragUpdate(d, width),
-                    onHorizontalDragEnd: (_) => _onSeekDragEnd(),
-                    onHorizontalDragCancel: _onSeekDragEnd,
-                    onVerticalDragStart: (d) => _onLevelStart(d, size),
-                    onVerticalDragUpdate: _onLevelUpdate,
-                    onVerticalDragEnd: (_) => _onLevelEnd(),
-                    onVerticalDragCancel: _onLevelEnd,
+                    // 锁屏时只留点按（呼出锁），其他手势都不挂
+                    onDoubleTapDown: _locked
+                        ? null
+                        : (d) => _doubleTapAt = d.localPosition,
+                    onDoubleTap: _locked ? null : () => _onDoubleTap(width),
+                    onLongPressStart: _locked
+                        ? null
+                        : (_) => _onLongPressStart(),
+                    onLongPressEnd: _locked ? null : (_) => _onLongPressEnd(),
+                    onHorizontalDragStart: _locked
+                        ? null
+                        : (d) => _onDragStart(d, size),
+                    onHorizontalDragUpdate: _locked
+                        ? null
+                        : (d) => _onDragUpdate(d, width),
+                    onHorizontalDragEnd: _locked
+                        ? null
+                        : (_) => _onSeekDragEnd(),
+                    onHorizontalDragCancel: _locked ? null : _onSeekDragEnd,
+                    onVerticalDragStart: _locked
+                        ? null
+                        : (d) => _onLevelStart(d, size),
+                    onVerticalDragUpdate: _locked ? null : _onLevelUpdate,
+                    onVerticalDragEnd: _locked ? null : (_) => _onLevelEnd(),
+                    onVerticalDragCancel: _locked ? null : _onLevelEnd,
                   ),
-                  // 控制层显示时缓冲的小圈在播放按钮里，收起后单独放在屏幕中间
-                  if (_buffering && !_controls && _error == null)
-                    const Center(
-                      child: CircularProgressIndicator(
-                        color: CinemaColors.amber,
-                      ),
-                    ),
+                  // 缓冲时屏幕正中转圈并写缓冲到多少（照爆米花）
+                  if (_buffering && _error == null)
+                    _BufferingIndicator(percent: _bufferingPercent),
                   _centerLabel(),
                   _controlsLayer(),
                   if (_error case final error?) _errorLayer(error),
@@ -919,12 +1067,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     return PlayerControls(
       tv: _tv,
       visible: _controls,
-      buffering: _buffering && _error == null,
       title: widget.args.displayTitle,
       position: _scrub ?? _position,
       duration: _duration,
       playing: _playing,
       castable: widget.args.castable,
+      rate: _rate,
+      fill: _fill,
+      locked: _locked,
       playFocus: _playFocus,
       seekFocus: _seekFocus,
       onClose: () => unawaited(_exit()),
@@ -933,6 +1083,23 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       onSeekBy: (delta) => unawaited(_seekBy(delta)),
       onScrubBy: _scrubBy,
       onOpenSettings: () => unawaited(_openSettings()),
+      onRate: () => unawaited(_openSettings(only: PlayerSettingsSection.rate)),
+      onAudio: () =>
+          unawaited(_openSettings(only: PlayerSettingsSection.audio)),
+      onSubtitles: () =>
+          unawaited(_openSettings(only: PlayerSettingsSection.subtitle)),
+      episodic: _episodes != null,
+      onPrevious: _episodes?.hasPrevious == true && !_switching
+          ? () => unawaited(_playNeighbour(-1))
+          : null,
+      onNext: _episodes?.hasNext == true && !_switching
+          ? () => unawaited(_playNeighbour(1))
+          : null,
+      onEpisodes: _episodes == null ? null : () => unawaited(_openEpisodes()),
+      // 旋转、比例、锁屏是触屏的；电视上画面比例在齿轮里
+      onRotate: _tv ? null : () => unawaited(_rotate()),
+      onToggleFill: _tv ? null : () => unawaited(_setFill(!_fill)),
+      onToggleLock: _tv ? null : _toggleLock,
       onScrubStart: () => _hideTimer?.cancel(),
       onScrub: (position) => setState(() => _scrub = position),
       onScrubEnd: () {

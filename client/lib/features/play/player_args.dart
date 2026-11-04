@@ -12,6 +12,7 @@ class PlayerArgs {
     this.castable = false,
     this.cellularConfirmed = false,
     this.playlistId,
+    this.itemId,
   });
 
   /// 用服务器签发的播放凭据和当前服务器地址组装
@@ -21,6 +22,7 @@ class PlayerArgs {
     bool castable = false,
     bool cellularConfirmed = false,
     int? playlistId,
+    int? itemId,
   }) => PlayerArgs(
     playableId: ticket.playableId,
     versionId: ticket.versionId,
@@ -38,6 +40,7 @@ class PlayerArgs {
     castable: castable,
     cellularConfirmed: cellularConfirmed,
     playlistId: playlistId,
+    itemId: itemId,
   );
 
   final int playableId;
@@ -61,6 +64,9 @@ class PlayerArgs {
 
   /// 播放列表连播上下文；外部播放器和投屏不设置此字段。
   final int? playlistId;
+
+  /// 所属作品。剧集据此取分集，底栏才有上一集 / 下一集 / 选集
+  final int? itemId;
 
   /// 顶栏的片名。服务端给剧集签发的标题是「剧名 S01E02」
   /// （backend/app/playback/service.py 的 _target），界面按术语表写成

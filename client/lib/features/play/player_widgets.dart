@@ -42,6 +42,43 @@ class _Scrim extends StatelessWidget {
   }
 }
 
+/// 缓冲时屏幕正中的圈和百分比
+class _BufferingIndicator extends StatelessWidget {
+  const _BufferingIndicator({required this.percent});
+
+  /// 0–100
+  final double percent;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Center(
+        child: SizedBox.square(
+          dimension: 56,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              const SizedBox.expand(
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: CinemaColors.amber,
+                ),
+              ),
+              Text(
+                '${percent.clamp(0, 100).round()}%',
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                  color: CinemaColors.text0,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _TimeText extends StatelessWidget {
   const _TimeText(this.text, {this.tv = false});
 
