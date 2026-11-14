@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.api.auth import UserOut
 from app.auth.users import Role, User, UserRepository
-from app.deps import AdminUser, AppClock, Db, ReadDb
+from app.deps import AdminUser, AppClock, Db, ReadDb, WebDav
 
 router = APIRouter(prefix="/admin/users", tags=["admin"])
 
@@ -111,11 +111,12 @@ def get_library_access(
 
 @router.put("/{user_id}/libraries")
 def set_library_access(
-    user_id: int, body: LibraryAccessBody, _: AdminUser, db: Db, clock: AppClock
+    user_id: int, body: LibraryAccessBody, _: AdminUser, db: Db, clock: AppClock, webdav: WebDav
 ) -> LibraryAccessBody:
-    """调整可见范围；有变化时该用户需要重新登录。"""
+    """调整可见范围；即时生效，不需要用户重新登录。"""
     users = UserRepository(db, clock)
     library_ids = users.set_library_ids(user_id, body.library_ids, all_libraries=body.all_libraries)
+    webdav.invalidate()  # WebDAV 目录树有短时缓存，范围变了就立刻丢掉
     return LibraryAccessBody(
         library_ids=library_ids, all_libraries=users.require(user_id).all_libraries
     )

@@ -263,7 +263,9 @@ def test_search_finds_works_by_writer_within_visible_libraries(
     assert get(client, user, "/search", q="刘慈欣")["total"] == 0
 
 
-def test_changing_access_signs_the_user_out(client: TestClient, catalog: dict[str, int]) -> None:
+def test_changing_access_keeps_the_user_signed_in(
+    client: TestClient, catalog: dict[str, int]
+) -> None:
     alice = new_user(client)
     tokens = login(client, "alice", "alice-password")
 
@@ -275,9 +277,10 @@ def test_changing_access_signs_the_user_out(client: TestClient, catalog: dict[st
         "library_ids": [catalog["movies"]],
         "all_libraries": False,
     }
-    assert client.get("/api/home", headers=bearer(tokens)).status_code == 401
+    # 修改可见范围不让登录失效，新范围立即生效
+    assert client.get("/api/home", headers=bearer(tokens)).status_code == 200
     refreshed = client.post("/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
-    assert refreshed.status_code == 401
+    assert refreshed.status_code == 200
 
 
 def test_library_access_is_validated_and_admin_only(

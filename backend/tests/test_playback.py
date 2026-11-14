@@ -391,7 +391,8 @@ def test_redirect_fails_after_user_changes(
 
     # 已缓存的直链也不能再拿到
     denied = jump(client, ticket["url"])
-    assert denied.status_code == 401
+    # 改可见范围不让令牌失效，但范围外的文件按不存在处理
+    assert denied.status_code == (404 if change == "access" else 401)
     assert "location" not in denied.headers
 
 

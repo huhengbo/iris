@@ -442,3 +442,17 @@ def test_admin_collection_changes_by_id_do_not_need_user_visibility(
     assert renamed.status_code == 200
     assert_hidden(client.get(f"/api/collections/{secret}", headers=world.alice), "机密合集")
     assert client.delete(f"/api/admin/collections/{secret}", headers=world.admin).status_code == 204
+
+
+def test_changing_library_access_keeps_user_logged_in(client: TestClient, world: World) -> None:
+    tokens = login_device(client, "alice", "alice-password", "手机")
+    response = client.put(
+        f"/api/admin/users/{world.alice_id}/libraries",
+        json={"library_ids": [world.movies, world.series]},
+        headers=world.admin,
+    )
+    assert response.status_code == 200, response.text
+    # 原 access token 与 refresh token 都仍有效，新范围立即生效
+    assert client.get("/api/me/sessions", headers=world.alice).status_code == 200
+    assert refresh_status(client, tokens) == 200
+    assert client.get(f"/api/libraries/{world.series}", headers=world.alice).status_code == 200

@@ -155,7 +155,7 @@ class UserRepository:
     def set_library_ids(
         self, user_id: int, library_ids: builtins.list[int], *, all_libraries: bool = False
     ) -> builtins.list[int]:
-        """调整可见范围。有变化时递增 token_version，已签发的令牌（包括播放令牌）随之失效。
+        """调整可见范围。可见范围每次请求从数据库读取，不递增 token_version，用户无需重新登录。
 
         all_libraries 打开时仍保存勾选的资料库，关掉后按它们分配。
         """
@@ -170,8 +170,7 @@ class UserRepository:
                 [(user_id, library_id) for library_id in wanted],
             )
             self._db.execute(
-                "UPDATE user SET all_libraries = ?, token_version = token_version + 1, "
-                "updated_at = ? WHERE id = ?",
+                "UPDATE user SET all_libraries = ?, updated_at = ? WHERE id = ?",
                 (int(all_libraries), to_iso(self._clock.now()), user_id),
             )
         return self.library_ids(user_id)

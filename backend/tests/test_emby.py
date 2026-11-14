@@ -237,11 +237,11 @@ def test_device_login_replaces_same_device_and_respects_user_changes(
         == 200
     )
 
-    # 修改可见范围：token_version 递增，设备令牌立即失效
+    # 修改可见范围不让设备令牌失效
     set_access(client, alice["id"], [])
     assert (
         client.get(f"/Users/{alice_uid}/Views", headers=token_headers(alice_token)).status_code
-        == 401
+        == 200
     )
 
     login_body = emby_login(client, "alice", "alice-password")
