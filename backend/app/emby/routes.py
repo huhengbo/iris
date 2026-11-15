@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from fastapi import APIRouter, Request, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from starlette.responses import FileResponse, PlainTextResponse, RedirectResponse
 
 from app.auth.sessions import SessionService, Unauthorized
@@ -84,6 +84,14 @@ class PlaybackReport(BaseModel):
     PositionTicks: int | None = None
     Client: str | None = None
     DeviceId: str | None = None
+
+    @field_validator("PositionTicks", mode="before")
+    @classmethod
+    def _whole_ticks(cls, value: object) -> object:
+        # 有的客户端把刻数写成浮点数，取整而不是整条上报报 422
+        if isinstance(value, float):
+            return int(value)
+        return value
 
 
 # ---- 服务器和用户 ----
@@ -934,21 +942,71 @@ def remove_favorite(
     return user_data(_refetched(db, session.user, entry))
 
 
+def _set_played(states: PlaybackStates, entry: EmbyEntry, watched: bool) -> None:
+    if entry.type in ("Movie", "Series"):
+        states.mark_item(entry.id, watched)
+    elif entry.type == "Season":
+        states.mark_season(entry.id, watched)
+    elif entry.type == "Episode":
+        states.mark_episode(entry.id, watched)
+    else:
+        raise AppError(400, "not_playable", "这一类型不能标记已看")
+
+
+def _set_position(
+    db: ReadDb, states: PlaybackStates, user: User, entry: EmbyEntry, ticks: int
+) -> None:
+    if entry.type not in ("Movie", "Episode") or entry.playable_id is None:
+        raise AppError(400, "not_playable", "这一类型没有续播位置")
+    seconds = _seconds(ticks)
+    duration = EmbyQueries(db, user).playable_duration(entry.playable_id)
+    if seconds is not None and duration is not None:
+        states.save_progress(entry.playable_id, seconds, duration)
+
+
+class UserDataUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    PlaybackPositionTicks: int | None = None
+    Played: bool | None = None
+    IsFavorite: bool | None = None
+
+
+@router.post("/emby/users/{uid}/items/{item_id}/userdata")
+def update_user_data(
+    uid: str,
+    item_id: str,
+    body: UserDataUpdate,
+    session: EmbyUser,
+    db: Db,
+    clock: AppClock,
+    playback: Playback,
+) -> dict[str, Any]:
+    """客户端直接写用户数据：已看、收藏和续播位置；其他字段（评分、播放次数）忽略。"""
+    require_user(session, uid)
+    entry = _entry_by_value(db, session.user, item_id)
+    states = PlaybackStates(db, clock, session.user)
+    if body.Played is not None:
+        _set_played(states, entry, body.Played)
+    if body.IsFavorite is not None:
+        favorites = Favorites(db, session.user, clock)
+        kind = _favorite_kind(entry)
+        if body.IsFavorite:
+            favorites.add(kind, entry.id)
+        else:
+            favorites.remove(kind, entry.id)
+    if body.PlaybackPositionTicks is not None:
+        _set_position(db, states, session.user, entry, body.PlaybackPositionTicks)
+    return user_data(_refetched(db, session.user, entry))
+
+
 @router.post("/emby/users/{uid}/playeditems/{item_id}")
 def mark_played(
     uid: str, item_id: str, session: EmbyUser, db: Db, clock: AppClock
 ) -> dict[str, Any]:
     require_user(session, uid)
     entry = _entry_by_value(db, session.user, item_id)
-    states = PlaybackStates(db, clock, session.user)
-    if entry.type in ("Movie", "Series"):
-        states.mark_item(entry.id, True)
-    elif entry.type == "Season":
-        states.mark_season(entry.id, True)
-    elif entry.type == "Episode":
-        states.mark_episode(entry.id, True)
-    else:
-        raise AppError(400, "not_playable", "这一类型不能标记已看")
+    _set_played(PlaybackStates(db, clock, session.user), entry, True)
     return user_data(_refetched(db, session.user, entry))
 
 
@@ -958,15 +1016,27 @@ def unmark_played(
 ) -> dict[str, Any]:
     require_user(session, uid)
     entry = _entry_by_value(db, session.user, item_id)
-    states = PlaybackStates(db, clock, session.user)
-    if entry.type in ("Movie", "Series"):
-        states.mark_item(entry.id, False)
-    elif entry.type == "Season":
-        states.mark_season(entry.id, False)
-    elif entry.type == "Episode":
-        states.mark_episode(entry.id, False)
-    else:
-        raise AppError(400, "not_playable", "这一类型不能标记已看")
+    _set_played(PlaybackStates(db, clock, session.user), entry, False)
+    return user_data(_refetched(db, session.user, entry))
+
+
+@router.post("/emby/users/{uid}/items/{item_id}/hidefromresume")
+def hide_from_resume(
+    uid: str, item_id: str, request: Request, session: EmbyUser, db: Db, clock: AppClock
+) -> dict[str, Any]:
+    require_user(session, uid)
+    entry = _entry_by_value(db, session.user, item_id)
+    # Hide=false 是取消隐藏；位置已经清掉，没有可恢复的内容
+    if request.query_params.get("Hide", "true").lower() != "false":
+        states = PlaybackStates(db, clock, session.user)
+        if entry.type in ("Movie", "Series"):
+            states.hide_item(entry.id)
+        elif entry.type == "Season":
+            states.hide_season(entry.id)
+        elif entry.type == "Episode":
+            states.hide_episode(entry.id)
+        else:
+            raise AppError(400, "not_playable", "这一类型没有续播位置")
     return user_data(_refetched(db, session.user, entry))
 
 
@@ -1167,6 +1237,21 @@ def _seconds(value: int | None) -> int | None:
     return None if value is None else max(int(value // TICKS), 0)
 
 
+def _log_report(
+    kind: str, session: EmbySession, playable_id: int, position: int | None, duration: int | None
+) -> None:
+    """记下客户端上报的位置，排查续播丢失用；不含令牌。"""
+    logger.info(
+        "emby report kind=%s user=%s client=%s playable=%s position=%s duration=%s",
+        kind,
+        session.user.id,
+        session.client_name,
+        playable_id,
+        position,
+        duration,
+    )
+
+
 def _record_progress(
     body: PlaybackReport,
     session: EmbySession,
@@ -1179,6 +1264,7 @@ def _record_progress(
     _, playable_id, version_id = _report_item(db, playback, session.user, body)
     position = _seconds(body.PositionTicks)
     duration = EmbyQueries(db, session.user).playable_duration(playable_id)
+    _log_report("stopped" if stopped else "progress", session, playable_id, position, duration)
     events = PlayEvents(db, clock)
     if position is not None and duration is not None:
         PlaybackStates(db, clock, session.user).save_progress(playable_id, position, duration)
@@ -1210,6 +1296,7 @@ def playing(
     playback: Playback,
 ) -> Response:
     _, playable_id, version_id = _report_item(db, playback, session.user, body)
+    _log_report("start", session, playable_id, _seconds(body.PositionTicks), None)
     PlaybackStates(db, clock, session.user).record_play(
         playable_id,
         version_id,
@@ -1239,4 +1326,67 @@ def playing_stopped(
     clock: AppClock,
     playback: Playback,
 ) -> Response:
+    return _record_progress(body, session, db, clock, playback, stopped=True)
+
+
+@router.post("/emby/sessions/playing/ping", status_code=204)
+def playing_ping() -> Response:
+    # 保活：客户端暂停时用它告诉服务器还在，进度不变
+    return Response(status_code=204)
+
+
+# ---- 旧式上报：位置和版本放在 query，Kodi 等客户端还在用 ----
+
+
+def _legacy_report(
+    uid: str, item_id: str, request: Request, session: EmbySession
+) -> PlaybackReport:
+    require_user(session, uid)
+    params = request.query_params
+    return PlaybackReport(
+        ItemId=item_id,
+        MediaSourceId=params.get("MediaSourceId") or None,
+        PositionTicks=_int(params.get("PositionTicks"), 0) if params.get("PositionTicks") else None,
+    )
+
+
+@router.post("/emby/users/{uid}/playingitems/{item_id}", status_code=204)
+def legacy_playing(
+    uid: str,
+    item_id: str,
+    request: Request,
+    session: EmbyUser,
+    db: Db,
+    clock: AppClock,
+    playback: Playback,
+) -> Response:
+    body = _legacy_report(uid, item_id, request, session)
+    return playing(body, session, db, clock, playback)
+
+
+@router.post("/emby/users/{uid}/playingitems/{item_id}/progress", status_code=204)
+def legacy_progress(
+    uid: str,
+    item_id: str,
+    request: Request,
+    session: EmbyUser,
+    db: Db,
+    clock: AppClock,
+    playback: Playback,
+) -> Response:
+    body = _legacy_report(uid, item_id, request, session)
+    return _record_progress(body, session, db, clock, playback, stopped=False)
+
+
+@router.delete("/emby/users/{uid}/playingitems/{item_id}", status_code=204)
+def legacy_stopped(
+    uid: str,
+    item_id: str,
+    request: Request,
+    session: EmbyUser,
+    db: Db,
+    clock: AppClock,
+    playback: Playback,
+) -> Response:
+    body = _legacy_report(uid, item_id, request, session)
     return _record_progress(body, session, db, clock, playback, stopped=True)

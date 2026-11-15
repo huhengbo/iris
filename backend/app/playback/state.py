@@ -112,6 +112,29 @@ class PlaybackStates:
         ).fetchall()
         return [row["id"] for row in rows]
 
+    def hide_item(self, item_id: int) -> None:
+        self._clear_resume(self._playables("m.id = ?", (item_id,)), "条目不存在")
+
+    def hide_season(self, season_id: int) -> None:
+        playables = self._playables(
+            "p.episode_id IN (SELECT id FROM episode WHERE season_id = ?)", (season_id,)
+        )
+        self._clear_resume(playables, "这一季不存在")
+
+    def hide_episode(self, episode_id: int) -> None:
+        self._clear_resume(self._playables("p.episode_id = ?", (episode_id,)), "这一集不存在")
+
+    def _clear_resume(self, playable_ids: list[int], missing: str) -> None:
+        """从继续观看里移除：只清续播位置，已看状态和历史保持不变。"""
+        if not playable_ids:
+            raise NotFound(missing)
+        marks = ", ".join("?" for _ in playable_ids)
+        self._db.execute(
+            f"UPDATE playback_state SET position = NULL, updated_at = ? "
+            f"WHERE user_id = ? AND playable_id IN ({marks})",
+            (to_iso(self._clock.now()), self._user.id, *playable_ids),
+        )
+
     def _mark(self, playable_ids: list[int], watched: bool, missing: str) -> None:
         """手动标记已看或未看都从头开始，清掉续播位置。"""
         if not playable_ids:

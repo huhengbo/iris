@@ -357,6 +357,91 @@ def test_progress_marks_watched_and_reports_client(
     assert event["ended_at"] is not None and event["watched_seconds"] == 600
 
 
+def _resume_ids(client: TestClient, token: str, uid: int) -> list[str]:
+    body = emby_get(client, token, f"/Users/{uid}/Items/Resume")
+    return [item["Id"] for item in body["Items"]]
+
+
+def test_midway_progress_resumes_and_can_be_hidden(
+    client: TestClient, catalog: dict[str, int]
+) -> None:
+    admin = fresh_admin(client)
+    login_body = emby_login(client)
+    token = login_body["AccessToken"]
+    uid = login_body["User"]["Id"]
+    headers = token_headers(token)
+    episode = series_episodes(client, admin)["S01E01"]
+    item_id = enc(episode["id"], 4)
+    source = emby_get(client, token, f"/Items/{item_id}/PlaybackInfo")["MediaSources"][0]
+    report = {"ItemId": item_id, "MediaSourceId": source["Id"]}
+
+    # 浮点刻数不能让上报失败
+    resp = client.post(
+        "/emby/Sessions/Playing/Progress",
+        json={**report, "PositionTicks": 600 * 10_000_000.0},
+        headers=headers,
+    )
+    assert resp.status_code == 204, resp.text
+    assert client.post("/emby/Sessions/Playing/Ping", headers=headers).status_code == 204
+    stopped = client.post(
+        "/emby/Sessions/Playing/Stopped",
+        json={**report, "PositionTicks": 600 * 10_000_000},
+        headers=headers,
+    )
+    assert stopped.status_code == 204
+    item = emby_get(client, token, f"/Users/{uid}/Items/{item_id}")
+    assert item["UserData"]["PlaybackPositionTicks"] == 600 * 10_000_000
+    assert item_id in _resume_ids(client, token, uid)
+
+    hidden = client.post(f"/emby/Users/{uid}/Items/{item_id}/HideFromResume", headers=headers)
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["PlaybackPositionTicks"] == 0
+    assert item_id not in _resume_ids(client, token, uid)
+
+
+def test_user_data_update_sets_position_played_and_favorite(
+    client: TestClient, catalog: dict[str, int]
+) -> None:
+    admin = fresh_admin(client)
+    login_body = emby_login(client)
+    token = login_body["AccessToken"]
+    uid = login_body["User"]["Id"]
+    headers = token_headers(token)
+    episode = series_episodes(client, admin)["S01E01"]
+    item_id = enc(episode["id"], 4)
+    url = f"/emby/Users/{uid}/Items/{item_id}/UserData"
+    ticks = 900 * 10_000_000
+    resp = client.post(
+        url, json={"PlaybackPositionTicks": ticks, "IsFavorite": True}, headers=headers
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["PlaybackPositionTicks"] == ticks and data["IsFavorite"] is True
+    assert item_id in _resume_ids(client, token, uid)
+
+    data = client.post(url, json={"Played": True}, headers=headers).json()
+    assert data["Played"] is True and data["PlaybackPositionTicks"] == 0
+
+
+def test_legacy_playing_items_routes_record_progress(
+    client: TestClient, catalog: dict[str, int]
+) -> None:
+    admin = fresh_admin(client)
+    login_body = emby_login(client)
+    token = login_body["AccessToken"]
+    uid = login_body["User"]["Id"]
+    headers = token_headers(token)
+    episode = series_episodes(client, admin)["S01E01"]
+    item_id = enc(episode["id"], 4)
+    base = f"/emby/Users/{uid}/PlayingItems/{item_id}"
+    assert client.post(base, headers=headers).status_code == 204
+    ticks = 300 * 10_000_000
+    assert client.post(f"{base}/Progress?PositionTicks={ticks}", headers=headers).status_code == 204
+    item = emby_get(client, token, f"/Users/{uid}/Items/{item_id}")
+    assert item["UserData"]["PlaybackPositionTicks"] == ticks
+    assert client.delete(f"{base}?PositionTicks={ticks}", headers=headers).status_code == 204
+
+
 def test_favorites_and_played_items(client: TestClient, catalog: dict[str, int]) -> None:
     admin = fresh_admin(client)
     login_body = emby_login(client)
