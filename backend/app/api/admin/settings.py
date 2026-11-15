@@ -36,10 +36,16 @@ class PluginSettingsOut(BaseModel):
     proxy: str | None
 
 
+class EmbySettingsOut(BaseModel):
+    # 第三方（Emby 协议）客户端能否下载视频，默认允许
+    download_enabled: bool
+
+
 class SettingsOut(BaseModel):
     server: ServerOut
     library: LibrarySettingsOut
     plugins: PluginSettingsOut
+    emby: EmbySettingsOut
 
 
 class ServerRequest(BaseModel):
@@ -54,6 +60,10 @@ class LibrarySettingsRequest(BaseModel):
 
     extras_min_mb: int = Field(ge=0, le=MAX_EXTRAS_MIN_MB)
     missing_grace_days: int | None = Field(default=None, ge=1, le=MAX_MISSING_GRACE_DAYS)
+
+
+class EmbySettingsRequest(BaseModel):
+    download_enabled: bool
 
 
 class PluginSettingsRequest(BaseModel):
@@ -90,6 +100,12 @@ def save_library(body: LibrarySettingsRequest, _: AdminUser, settings: Settings)
     return _settings_out(settings)
 
 
+@router.put("/emby")
+def save_emby(body: EmbySettingsRequest, _: AdminUser, settings: Settings) -> SettingsOut:
+    settings.save_emby_download_enabled(body.download_enabled)
+    return _settings_out(settings)
+
+
 @router.put("/plugins")
 def save_plugins(
     body: PluginSettingsRequest, _: AdminUser, settings: Settings, plugins: Plugins
@@ -116,4 +132,5 @@ def _settings_out(settings: SettingsService) -> SettingsOut:
         plugins=PluginSettingsOut(
             proxy=mask_proxy(plugin_proxy) if plugin_proxy else None,
         ),
+        emby=EmbySettingsOut(download_enabled=settings.emby_download_enabled()),
     )

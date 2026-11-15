@@ -3513,6 +3513,32 @@
         "title": "EmbeddedSubtitleOut",
         "type": "object"
       },
+      "EmbySettingsOut": {
+        "properties": {
+          "download_enabled": {
+            "title": "Download Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "download_enabled"
+        ],
+        "title": "EmbySettingsOut",
+        "type": "object"
+      },
+      "EmbySettingsRequest": {
+        "properties": {
+          "download_enabled": {
+            "title": "Download Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "download_enabled"
+        ],
+        "title": "EmbySettingsRequest",
+        "type": "object"
+      },
       "EpisodeOut": {
         "properties": {
           "air_date": {
@@ -9664,6 +9690,9 @@
       },
       "SettingsOut": {
         "properties": {
+          "emby": {
+            "$ref": "#/components/schemas/EmbySettingsOut"
+          },
           "library": {
             "$ref": "#/components/schemas/LibrarySettingsOut"
           },
@@ -9677,7 +9706,8 @@
         "required": [
           "server",
           "library",
-          "plugins"
+          "plugins",
+          "emby"
         ],
         "title": "SettingsOut",
         "type": "object"
@@ -19879,6 +19909,67 @@
           }
         },
         "summary": "Get Settings",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/settings/emby": {
+      "put": {
+        "operationId": "save_emby_api_admin_settings_emby_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbySettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Save Emby",
         "tags": [
           "admin"
         ]

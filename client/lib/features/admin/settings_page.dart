@@ -17,7 +17,7 @@ const _maxExtrasMinMb = 10240;
 const _maxGraceDays = 365;
 
 /// 「设置 › 服务器」下的四页，每页一个表单：
-/// 常规（服务器名）、远程访问（对外访问地址）、资料库（附加内容阈值、
+/// 常规（服务器名）、远程访问（对外访问地址、第三方客户端的下载开关）、资料库（附加内容阈值、
 /// 失效文件保留天数）、网络（插件网络代理）。TMDB 的 Key 和代理在插件设置页维护。
 ///
 /// 四页共用 [adminSettingsProvider]，保存后整份刷新，别页的输入不受影响
@@ -44,8 +44,17 @@ class RemoteAccessPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return _FormPage(
       title: '远程访问',
-      builder: (settings) =>
+      builder: (settings) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           _PublicUrlForm(key: ValueKey(settings.publicUrl), settings: settings),
+          const SizedBox(height: 24),
+          _EmbyClientsForm(
+            key: ValueKey(settings.embyDownloadEnabled),
+            settings: settings,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -314,6 +323,55 @@ class _PublicUrlFormState extends ConsumerState<_PublicUrlForm>
             helperText: '例如反向代理后的 https 地址，不要带结尾的斜杠',
           ),
           onSubmitted: (_) => _save(),
+        ),
+      ],
+    );
+  }
+}
+
+/// 第三方客户端（Infuse、网易爆米花等 Emby 协议客户端）的权限。
+class _EmbyClientsForm extends ConsumerStatefulWidget {
+  const _EmbyClientsForm({super.key, required this.settings});
+
+  final AdminSettings settings;
+
+  @override
+  ConsumerState<_EmbyClientsForm> createState() => _EmbyClientsFormState();
+}
+
+class _EmbyClientsFormState extends ConsumerState<_EmbyClientsForm>
+    with _SaveSection<_EmbyClientsForm> {
+  late bool _download = widget.settings.embyDownloadEnabled;
+
+  void _save() {
+    save(
+      () => saveEmbySettings(
+        ref.read(apiClientProvider),
+        downloadEnabled: _download,
+      ),
+      '已保存',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _Section(
+      title: '第三方客户端',
+      description:
+          'Infuse、网易爆米花等按 Emby 协议连接的客户端。'
+          '下载和在线播放一样，直接从来源取片，不经过本服务转发。',
+      saving: saving,
+      error: error,
+      onSave: _save,
+      children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('允许下载视频'),
+          subtitle: const Text('关闭后客户端不再显示下载入口，在线播放不受影响'),
+          value: _download,
+          onChanged: saving
+              ? null
+              : (value) => setState(() => _download = value),
         ),
       ],
     );

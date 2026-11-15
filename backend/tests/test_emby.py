@@ -362,6 +362,49 @@ def _resume_ids(client: TestClient, token: str, uid: int) -> list[str]:
     return [item["Id"] for item in body["Items"]]
 
 
+def test_download_is_allowed_by_default_and_can_be_switched_off(
+    client: TestClient, catalog: dict[str, int]
+) -> None:
+    admin = fresh_admin(client)
+    login_body = emby_login(client)
+    token = login_body["AccessToken"]
+    uid = login_body["User"]["Id"]
+    headers = token_headers(token)
+    episode = series_episodes(client, admin)["S01E01"]
+    item_id = enc(episode["id"], 4)
+    series_id = find(client, "三体")["id"]
+
+    assert login_body["User"]["Policy"]["EnableContentDownloading"] is True
+    assert emby_get(client, token, f"/Users/{uid}/Items/{item_id}")["CanDownload"] is True
+    series = emby_get(client, token, f"/Users/{uid}/Items/{enc(series_id, 2)}")
+    assert series["CanDownload"] is False
+    source = emby_get(client, token, f"/Items/{item_id}/PlaybackInfo")["MediaSources"][0]
+    download = client.get(
+        f"/Items/{item_id}/Download",
+        params={"MediaSourceId": source["Id"]},
+        headers=headers,
+        follow_redirects=False,
+    )
+    assert download.status_code == 302, download.text
+    assert download.headers["location"].startswith("https://cdn.example/")
+
+    off = client.put("/api/admin/settings/emby", json={"download_enabled": False}, headers=admin)
+    assert off.status_code == 200, off.text
+    assert off.json()["emby"]["download_enabled"] is False
+    assert emby_get(client, token, f"/Users/{uid}/Items/{item_id}")["CanDownload"] is False
+    assert emby_get(client, token, f"/Users/{uid}")["Policy"]["EnableContentDownloading"] is False
+    denied = client.get(f"/Items/{item_id}/Download", headers=headers, follow_redirects=False)
+    assert denied.status_code == 403
+    # 在线播放不受影响
+    stream = client.get(
+        f"/Videos/{item_id}/stream",
+        params={"MediaSourceId": source["Id"]},
+        headers=headers,
+        follow_redirects=False,
+    )
+    assert stream.status_code == 302
+
+
 def test_midway_progress_resumes_and_can_be_hidden(
     client: TestClient, catalog: dict[str, int]
 ) -> None:

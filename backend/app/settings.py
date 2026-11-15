@@ -14,6 +14,7 @@ PLUGIN_PROXY_SETTING = "plugin.proxy"
 _PROXY_SCHEMES = ("http://", "https://", "socks5://", "socks5h://")
 _EXTRAS_SETTING = "library.extras_min_mb"
 _GRACE_SETTING = "sync.missing_grace_days"
+_EMBY_DOWNLOAD_SETTING = "emby.download_enabled"
 _SERVER_ID_SETTING = "server.id"
 _SERVER_NAME_SETTING = "server.name"
 _PUBLIC_URL_SETTING = "server.public_url"
@@ -125,6 +126,20 @@ class SettingsService:
             put_setting(connection, _GRACE_SETTING, str(value), to_iso(self._clock.now()))
         return value
 
+    def emby_download_enabled(self) -> bool:
+        with self._database.read_session() as connection:
+            return emby_download_enabled(connection)
+
+    def save_emby_download_enabled(self, enabled: bool) -> bool:
+        with self._database.session() as connection:
+            put_setting(
+                connection,
+                _EMBY_DOWNLOAD_SETTING,
+                "1" if enabled else "0",
+                to_iso(self._clock.now()),
+            )
+        return enabled
+
     def library_subtitle_language(self, library_id: int) -> str | None:
         with self._database.read_session() as connection:
             return get_setting(connection, f"library.{library_id}.subtitle_language")
@@ -189,6 +204,11 @@ def mask_proxy(proxy: str) -> str:
 
 
 MASK = "***"
+
+
+def emby_download_enabled(connection: sqlite3.Connection) -> bool:
+    """第三方（Emby）客户端能否下载视频；没设置过时默认允许。"""
+    return get_setting(connection, _EMBY_DOWNLOAD_SETTING) != "0"
 
 
 def get_setting(connection: sqlite3.Connection, key: str) -> str | None:

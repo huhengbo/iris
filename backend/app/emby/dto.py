@@ -44,6 +44,7 @@ def item_dto(
     include_media_sources: bool = False,
     api_key: str | None = None,
     media_sources: list[dict[str, Any]] | None = None,
+    can_download: bool = False,
 ) -> dict[str, Any]:
     bit = type_bit_for(entry.type)
     item_id = encode(entry.id, bit)
@@ -67,7 +68,7 @@ def item_dto(
         "BackdropImageTags": [entry.backdrop_hash] if entry.backdrop_hash else [],
         "ParentBackdropImageTags": [],
         "UserData": user_data(entry),
-        "CanDownload": False,
+        "CanDownload": can_download and entry.type in ("Movie", "Episode"),
         "LocationType": "FileSystem" if entry.playable_id is not None else None,
         "MediaSources": media_sources or [],
     }

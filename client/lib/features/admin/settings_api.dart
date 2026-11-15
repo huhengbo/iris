@@ -13,12 +13,14 @@ class AdminSettings {
     this.pluginsProxy,
     required this.extrasMinMb,
     required this.missingGraceDays,
+    this.embyDownloadEnabled = true,
   });
 
   factory AdminSettings.fromJson(Map<String, dynamic> json) {
     final server = json['server'] as Map<String, dynamic>;
     final plugins = json['plugins'] as Map<String, dynamic>?;
     final library = json['library'] as Map<String, dynamic>;
+    final emby = json['emby'] as Map<String, dynamic>?;
     return AdminSettings(
       serverId: server['id'] as String,
       serverName: server['name'] as String,
@@ -26,6 +28,7 @@ class AdminSettings {
       pluginsProxy: plugins?['proxy'] as String?,
       extrasMinMb: library['extras_min_mb'] as int,
       missingGraceDays: library['missing_grace_days'] as int,
+      embyDownloadEnabled: emby?['download_enabled'] as bool? ?? true,
     );
   }
 
@@ -43,6 +46,9 @@ class AdminSettings {
 
   /// 来源上消失的文件保留这么多天后从库里删除，期间移回来可以恢复
   final int missingGraceDays;
+
+  /// 第三方（Emby 协议）客户端能否下载视频，默认允许
+  final bool embyDownloadEnabled;
 }
 
 final adminSettingsProvider = FutureProvider.autoDispose<AdminSettings>((
@@ -81,3 +87,8 @@ Future<AdminSettings> saveLibrarySettings(
   'extras_min_mb': extrasMinMb,
   'missing_grace_days': missingGraceDays,
 });
+
+Future<AdminSettings> saveEmbySettings(
+  Dio dio, {
+  required bool downloadEnabled,
+}) => _put(dio, 'emby', {'download_enabled': downloadEnabled});

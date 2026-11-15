@@ -222,10 +222,15 @@ List<Map<String, dynamic>> _metadata() => [
   },
 ];
 
-Map<String, dynamic> _settings({String? pluginsProxy, String? publicUrl}) => {
+Map<String, dynamic> _settings({
+  String? pluginsProxy,
+  String? publicUrl,
+  bool embyDownload = true,
+}) => {
   'server': {'id': 'abc123', 'name': '家里的影院', 'public_url': publicUrl},
   'plugins': {'proxy': pluginsProxy},
   'library': {'extras_min_mb': 200, 'missing_grace_days': 7},
+  'emby': {'download_enabled': embyDownload},
 };
 
 void main() {
@@ -1111,6 +1116,26 @@ void main() {
       expect(find.text('服务器名称'), findsNothing);
     });
 
+    testWidgets('emby download switch defaults on and saves its own section', (
+      tester,
+    ) async {
+      final api = await pumpAdmin(tester, const RemoteAccessPage(), (api) {
+        api.on('GET $_admin/settings', _settings());
+        api.on('PUT $_admin/settings/emby', _settings(embyDownload: false));
+      });
+
+      final toggle = find.widgetWithText(SwitchListTile, '允许下载视频');
+      await tester.ensureVisible(toggle);
+      expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+      await tester.tap(toggle);
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, '保存').last);
+      await tester.pumpAndSettle();
+      expect(api.bodies['PUT $_admin/settings/emby'], {
+        'download_enabled': false,
+      });
+    });
+
     testWidgets('public URL is saved together with the server name', (
       tester,
     ) async {
@@ -1127,7 +1152,7 @@ void main() {
       final field = find.widgetWithText(TextField, '对外访问地址');
       await tester.ensureVisible(field);
       await tester.enterText(field, 'movie.example.com');
-      final save = find.widgetWithText(FilledButton, '保存').last;
+      final save = find.widgetWithText(FilledButton, '保存').first;
       await tester.tap(save);
       await tester.pumpAndSettle();
       expect(api.bodies['PUT $_admin/settings/server'], {

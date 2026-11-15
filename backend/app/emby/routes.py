@@ -55,6 +55,7 @@ from app.playback.emby import EmbyPlayback
 from app.playback.events import PlayEvents
 from app.playback.service import InlineContent, PlayDenied
 from app.playback.state import WATCHED_RATIO, PlaybackStates
+from app.settings import emby_download_enabled
 
 router = APIRouter(include_in_schema=False)
 
@@ -102,7 +103,7 @@ def _server(settings: Settings) -> tuple[str, str]:
     return server.id, server.name
 
 
-def _user_dto(user: User, server_id: str) -> dict[str, Any]:
+def _user_dto(user: User, server_id: str, *, can_download: bool) -> dict[str, Any]:
     # 管理员通过 Emby 登录也没有管理能力（ADR 0024）
     return {
         "Name": user.username,
@@ -119,7 +120,7 @@ def _user_dto(user: User, server_id: str) -> dict[str, Any]:
             "EnabledFolders": [],
             "EnableRemoteControlOfOtherUsers": False,
             "EnableSharedDeviceControl": False,
-            "EnableContentDownloading": False,
+            "EnableContentDownloading": can_download,
             "EnableSyncTranscoding": False,
             "EnableAllChannels": False,
             "EnableAllDevices": False,
@@ -231,7 +232,7 @@ def authenticate_by_name(
     server_id, _ = _server(settings)
     at = clock.now().isoformat()
     return {
-        "User": _user_dto(user, server_id),
+        "User": _user_dto(user, server_id, can_download=settings.emby_download_enabled()),
         "AccessToken": device.token,
         "ServerId": server_id,
         "SessionInfo": _session_dto(
@@ -270,14 +271,14 @@ def system_info(_: EmbyUser, settings: Settings) -> dict[str, Any]:
 @router.get("/emby/users/me")
 def users_me(session: EmbyUser, settings: Settings) -> dict[str, Any]:
     server_id, _ = _server(settings)
-    return _user_dto(session.user, server_id)
+    return _user_dto(session.user, server_id, can_download=settings.emby_download_enabled())
 
 
 @router.get("/emby/users/{uid}")
 def user_detail(uid: str, session: EmbyUser, settings: Settings) -> dict[str, Any]:
     require_user(session, uid)
     server_id, _ = _server(settings)
-    return _user_dto(session.user, server_id)
+    return _user_dto(session.user, server_id, can_download=settings.emby_download_enabled())
 
 
 @router.post("/emby/sessions/logout", status_code=204)
@@ -482,14 +483,18 @@ def _list_dtos(
 
     有的客户端（网易爆米花）直接拿列表里的播放源播放，不再请求 PlaybackInfo。
     """
+    can_download = emby_download_enabled(db)
     if not _wants_media_sources(request):
-        return [item_dto(entry, server_id=server_id) for entry in entries]
+        return [
+            item_dto(entry, server_id=server_id, can_download=can_download) for entry in entries
+        ]
     api_key = token_from(request) or ""
     return [
         item_dto(
             entry,
             server_id=server_id,
             include_media_sources=True,
+            can_download=can_download,
             media_sources=_media_sources(db, playback, session.user, entry, api_key)
             if entry.type in ("Movie", "Episode")
             else [],
@@ -688,6 +693,7 @@ def _item_detail(
         server_id=server_id,
         include_media_sources=True,
         media_sources=sources,
+        can_download=emby_download_enabled(db),
     )
 
 
@@ -1169,6 +1175,22 @@ def video_stream(
     playback: Playback,
     extension: str = "",
 ) -> Response:
+    return _stream(item_id, request, session, db, playback)
+
+
+@router.api_route("/emby/items/{item_id}/download", methods=["GET", "HEAD"])
+def item_download(
+    item_id: str,
+    request: Request,
+    session: EmbyUser,
+    db: ReadDb,
+    playback: Playback,
+) -> Response:
+    """下载原文件：和直接播放一样跳转到 115 直链，开关由管理员在服务器设置里控制。"""
+    if not emby_download_enabled(db):
+        return PlainTextResponse(
+            "服务器未开启下载", status_code=403, headers={"Cache-Control": "no-store"}
+        )
     return _stream(item_id, request, session, db, playback)
 
 
