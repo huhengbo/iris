@@ -147,11 +147,10 @@ def test_all_libraries_includes_later_ones(
     listed = get(client, admin, "/admin/users")
     assert next(u for u in listed if u["username"] == "alice")["all_libraries"] is True
 
-    # 关掉后按勾选的资料库分配，并让旧令牌失效
+    # 关掉后按勾选的资料库分配，旧令牌仍然有效，新范围立即生效
     response = client.put(url, json={"library_ids": [second["id"]]}, headers=admin)
     assert response.json() == {"library_ids": [second["id"]], "all_libraries": False}
-    assert client.get("/api/libraries", headers=user).status_code == 401
-    user = bearer(login(client, "alice", "alice-password"))
+    assert client.get("/api/libraries", headers=user).status_code == 200
     assert [lib["id"] for lib in get(client, user, "/libraries")] == [second["id"]]
 
 

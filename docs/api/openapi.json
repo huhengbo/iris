@@ -21137,7 +21137,7 @@
         ]
       },
       "put": {
-        "description": "调整可见范围；有变化时该用户需要重新登录。",
+        "description": "调整可见范围；即时生效，不需要用户重新登录。",
         "operationId": "set_library_access_api_admin_users__user_id__libraries_put",
         "parameters": [
           {
