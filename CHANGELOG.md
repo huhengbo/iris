@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-11-15
+
+### ✨ 新功能
+
+- 第三方（Emby 协议）客户端可以下载视频，网易爆米花、Infuse 等不再提示“下载不了”。新增 `Items/{id}/Download`，条目的 `CanDownload` 和用户策略的 `EnableContentDownloading` 跟着开关走。管理员可以在「设置 → 远程访问 → 第三方客户端」整体关闭下载，默认开启。
+
+### 🐛 修复
+
+- 修复发布流水线里 APK 构建失败：Android Gradle Plugin 升到 9.1.1，满足新版 Flutter 的最低要求。
+
 ## [0.6.2] - 2026-11-15
 
 ### ✨ 新功能
