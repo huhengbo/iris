@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
 
 from app.clock import Clock, to_iso
@@ -10,6 +11,17 @@ from app.library.media import MediaKind, media_kind
 
 # moved：库里还有一条有效记录指向同一个来源文件，是只同步了新位置的目录时看到的移动
 EnrichOutcome = Literal["added", "restored", "renamed", "moved"]
+
+
+def iso_time(epoch: int | None) -> str | None:
+    """来源给的 Unix 秒转成库里统一的 ISO 时间；空值或不合理的值（0、负数）按没有处理。"""
+    if not epoch or epoch <= 0:
+        return None
+    return to_iso(datetime.fromtimestamp(epoch, UTC))
+
+
+def epoch_time(value: str | None) -> int | None:
+    return int(datetime.fromisoformat(value).timestamp()) if value else None
 
 
 @dataclass(frozen=True)
@@ -39,6 +51,8 @@ class FileEntry:
     size: int
     playback_locator: str
     sha1: str
+    # 来源给出的创建时间（ISO），没有时不覆盖库里已有的值
+    created_at: str | None = None
 
 
 class MediaFileRepository:
@@ -187,13 +201,15 @@ class MediaFileRepository:
     def set_active(self, media_file_id: int, entry: FileEntry, now: str) -> None:
         self._db.execute(
             "UPDATE media_file SET state = 'active', identity = ?, playback_locator = ?, "
-            "size = ?, sha1 = ?, missing_at = NULL, updated_at = ? WHERE id = ?",
+            "size = ?, sha1 = ?, missing_at = NULL, updated_at = ?, "
+            "source_created_at = COALESCE(?, source_created_at) WHERE id = ?",
             (
                 entry.identity,
                 entry.playback_locator,
                 entry.size,
                 entry.sha1 or None,
                 now,
+                entry.created_at,
                 media_file_id,
             ),
         )
@@ -222,11 +238,39 @@ class MediaFileRepository:
         """库里已经补全过的文件（有效的和被过滤规则忽略的），按相对路径索引。
         扫描时来源可以直接复用它们，不必再去访问云端。"""
         rows = self._db.execute(
-            "SELECT rel_path, kind, identity, playback_locator, size, sha1 FROM media_file "
-            "WHERE folder_id = ? AND state IN ('active', 'ignored')",
+            "SELECT rel_path, kind, identity, playback_locator, size, sha1, source_created_at "
+            "FROM media_file WHERE folder_id = ? AND state IN ('active', 'ignored')",
             (folder_id,),
         )
         return {row["rel_path"]: row for row in rows}
+
+    def record_source_times(self, folder_id: int, times: dict[str, str]) -> None:
+        """扫描拿到的来源创建时间写回已有记录（旧记录的回填，也跟随来源上的变化）。"""
+        self._db.executemany(
+            "UPDATE media_file SET source_created_at = ? "
+            "WHERE folder_id = ? AND rel_path = ? AND source_created_at IS NOT ?",
+            [(created, folder_id, path, created) for path, created in times.items()],
+        )
+
+    def refresh_added_at(self, library_ids: Iterable[int]) -> None:
+        """条目的“添加时间”取它在用文件的最新来源创建时间；来源没给时间的条目保持原值。"""
+        library_ids = list(library_ids)
+        marks = ", ".join("?" for _ in library_ids) or "NULL"
+        self._db.execute(
+            f"""
+            UPDATE media_item SET added_at = latest.created FROM (
+                SELECT p.media_item_id AS item_id, MAX(f.source_created_at) AS created
+                FROM playable p
+                JOIN version v ON v.playable_id = p.id
+                JOIN media_file f ON f.id = v.media_file_id
+                WHERE f.state = 'active' AND f.source_created_at IS NOT NULL
+                GROUP BY p.media_item_id
+            ) AS latest
+            WHERE media_item.id = latest.item_id AND media_item.added_at <> latest.created
+              AND media_item.library_id IN ({marks})
+            """,
+            library_ids,
+        )
 
     def known_dirs(self, folder_id: int, prefix: str) -> set[str]:
         """prefix 下库里有未失效文件的子目录名（只取下一级）。"""

@@ -29,7 +29,7 @@ from app.priority import Priority
 from app.resources.repository import ResourceRepository
 from app.resources.service import FolderSource, ResourceSources, file_key, locator_of
 from app.settings import SettingsService
-from app.sync.files import FileEntry, MediaFileRepository, PendingFile
+from app.sync.files import FileEntry, MediaFileRepository, PendingFile, epoch_time, iso_time
 from app.sync.jobs import (
     Phase,
     SyncCancelled,
@@ -106,6 +106,7 @@ class SyncRun:
         self._recognize(folders)
         self._match(folders, library_ids)
         self._fill_items(library_ids)
+        self._refresh_added_at(library_ids)
         self._scrape_seasons(library_ids)
         self._sync_automatic_collections(library_ids)
         self._download_images(library_ids)
@@ -129,10 +130,15 @@ class SyncRun:
         self._recognize(involved)
         self._match(involved, library_ids)
         self._fill_items(library_ids)
+        self._refresh_added_at(library_ids)
         self._scrape_seasons(library_ids)
         self._sync_automatic_collections(library_ids)
         self._download_images(library_ids)
         self._metadata.artwork.cleanup()
+
+    def _refresh_added_at(self, library_ids: list[int]) -> None:
+        with self._database.session() as connection:
+            MediaFileRepository(connection, self._clock).refresh_added_at(library_ids)
 
     def _load_folders(self, library_id: int | None) -> list[LibraryFolder]:
         with self._database.read_session() as connection:
@@ -300,6 +306,7 @@ class SyncRun:
                             entry.key,
                             entry.identity,
                             entry.root_path,
+                            entry.created_at,
                         )
                     )
 
@@ -393,6 +400,14 @@ class SyncRun:
                 [entry.relative_path for entry in entries],
                 scope,
             )
+            repository.record_source_times(
+                folder.id,
+                {
+                    entry.relative_path: created
+                    for entry in entries
+                    if (created := iso_time(entry.created_at)) is not None
+                },
+            )
         self._entries[folder.id] = {entry.relative_path: entry for entry in entries}
         self.stats.removed += diff.vanished
         self._source_result(folder, None)
@@ -407,6 +422,7 @@ class SyncRun:
             return source_reader.scan(source.locator)
         with self._database.read_session() as connection:
             rows = MediaFileRepository(connection, self._clock).known_entries(folder.id)
+        # 没有来源时间的旧记录不当作已知：这次扫描重新列一遍，顺带回填时间
         known = {
             path: ResourceEntry(
                 locator=row["playback_locator"] or row["identity"] or "",
@@ -417,8 +433,10 @@ class SyncRun:
                 playback_locator=row["playback_locator"],
                 key=row["identity"],
                 identity=row["identity"],
+                created_at=epoch_time(row["source_created_at"]),
             )
             for path, row in rows.items()
+            if row["source_created_at"] is not None
         }
         return source_reader.scan(source.locator, known=known)
 
@@ -469,6 +487,7 @@ class SyncRun:
                     size=found.size or 0,
                     playback_locator=found.playback_locator or found.locator,
                     sha1=found.sha1 or "",
+                    created_at=iso_time(found.created_at),
                 )
                 self._count(repository.enrich(file, entry, self._job.started_at), file)
 

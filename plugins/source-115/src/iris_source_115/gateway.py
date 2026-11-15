@@ -52,6 +52,8 @@ class CloudEntry:
     size: int
     pickcode: str
     sha1: str = ""
+    # 115 的创建（上传）时间，Unix 秒；列目录的响应里本来就有，不额外请求
+    created_at: int | None = None
 
 
 @dataclass(frozen=True)

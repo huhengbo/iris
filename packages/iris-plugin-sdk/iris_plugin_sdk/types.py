@@ -658,6 +658,8 @@ class ResourceEntry:
     identity: str | None = None
     # 扫描根目录的展示路径；宿主用它刷新资料库目录名称。
     root_path: str | None = None
+    # 来源给出的文件创建（上传）时间，Unix 秒；宿主用它作为“最近添加”的依据。拿不到时为空。
+    created_at: int | None = None
 
 
 @dataclass(frozen=True)

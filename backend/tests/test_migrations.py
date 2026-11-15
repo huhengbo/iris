@@ -43,6 +43,7 @@ def test_migrations_are_baseline_then_source_neutral() -> None:
         (9, "work_suggestion"),
         (10, "item_embedding"),
         (11, "ai_chat"),
+        (12, "media_file_source_time"),
     ]
 
 
@@ -262,6 +263,7 @@ def test_source_neutral_migration_renames_and_converts_scope_keys(
             (9, "work_suggestion"),
             (10, "item_embedding"),
             (11, "ai_chat"),
+            (12, "media_file_source_time"),
         ]
     finally:
         raw.close()

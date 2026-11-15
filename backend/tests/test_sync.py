@@ -672,3 +672,12 @@ def test_fatal_unavailable_during_sync_fails_the_job(
     assert "凭据已失效" in body["error"]
     cloud115.control.call("source", "set_fatal_scan", {"value": False})
     assert sync(client, admin)["status"] == "succeeded"
+
+
+def test_iso_time_ignores_missing_source_times() -> None:
+    from app.sync.files import epoch_time, iso_time
+
+    assert iso_time(None) is None
+    assert iso_time(0) is None
+    assert iso_time(1577934245) == "2020-01-02T03:04:05+00:00"
+    assert epoch_time(iso_time(1577934245)) == 1577934245

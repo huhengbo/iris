@@ -367,7 +367,24 @@ def _entry(item: dict[str, Any]) -> CloudEntry:
         size=int(item.get("s") or 0),
         pickcode=str(item.get("pc") or ""),
         sha1="" if is_dir else str(item.get("sha") or "").upper(),
+        created_at=None if is_dir else _created_at(item),
     )
+
+
+def _created_at(item: dict[str, Any]) -> int | None:
+    """tp 是创建（上传）时间戳；没有时退回 t，它可能是时间戳，也可能是 'YYYY-MM-DD HH:MM'。"""
+    for key in ("tp", "t"):
+        value = item.get(key)
+        if not value:
+            continue
+        text = str(value)
+        if text.isdigit():
+            return int(text)
+        try:
+            return int(datetime.strptime(text, "%Y-%m-%d %H:%M").astimezone().timestamp())
+        except ValueError:
+            continue
+    return None
 
 
 def _life_event(item: dict[str, Any]) -> LifeEvent:

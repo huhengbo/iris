@@ -13,7 +13,7 @@ from app.library.catalog import CatalogRepository
 from app.library.repository import LibraryRepository
 from app.library.scraper import require_item
 from app.resources.service import ResourceSources, file_key
-from app.sync.files import FileEntry, MediaFileRepository
+from app.sync.files import FileEntry, MediaFileRepository, iso_time
 from app.sync.jobs import SyncJobRepository
 
 # 条目下的视频，以及挂在这些视频上的字幕
@@ -82,6 +82,7 @@ class Reenricher:
                                 name=str(row["rel_path"]).rpartition("/")[2],
                                 size=entry.size or 0,
                                 playback_locator=entry.playback_locator or entry.locator,
+                                created_at=iso_time(entry.created_at),
                                 sha1=entry.sha1 or "",
                             ),
                             now,

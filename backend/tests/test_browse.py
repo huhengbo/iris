@@ -523,3 +523,43 @@ def test_search_matches_chinese_original_and_english_titles(
     assert episodes and all(episode["show_title"] == "三体" for episode in episodes)
     page = get(client, admin, "/search", q="的", limit=1)
     assert page["total"] == 1 and titles(page) == ["疯狂的外星人"]
+
+
+def test_item_added_time_follows_source_file_time(
+    client: TestClient, config: AppConfig, catalog: dict[str, int]
+) -> None:
+    """条目的添加时间取来源文件的创建时间，不是搜刮时间；没有来源时间的条目保持原值。"""
+    from app.clock import SystemClock
+    from app.sync.files import MediaFileRepository
+
+    stars = find(client, "星际穿越")["id"]
+    earth = find(client, "流浪地球")["id"]
+    with sqlite3.connect(config.database_path) as connection:
+        connection.row_factory = sqlite3.Row
+
+        def added(item_id: int) -> str:
+            return str(
+                connection.execute(
+                    "SELECT added_at FROM media_item WHERE id = ?", (item_id,)
+                ).fetchone()[0]
+            )
+
+        before = added(stars)
+        # 流浪地球有 1080p 和 2160p 两个版本：取在用文件里最新的
+        connection.execute(
+            "UPDATE media_file SET source_created_at = '2020-01-02T03:04:05+00:00' WHERE id IN "
+            "(SELECT media_file_id FROM version v JOIN playable p ON p.id = v.playable_id "
+            "WHERE p.media_item_id = ?)",
+            (earth,),
+        )
+        connection.execute(
+            "UPDATE media_file SET source_created_at = '2021-05-06T07:08:09+00:00' WHERE id = "
+            "(SELECT MAX(media_file_id) FROM version v JOIN playable p ON p.id = v.playable_id "
+            "WHERE p.media_item_id = ?)",
+            (earth,),
+        )
+        library_ids = [row[0] for row in connection.execute("SELECT id FROM library")]
+        MediaFileRepository(connection, SystemClock()).refresh_added_at(library_ids)
+
+        assert added(earth) == "2021-05-06T07:08:09+00:00"
+        assert added(stars) == before

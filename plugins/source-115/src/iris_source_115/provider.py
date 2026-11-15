@@ -224,6 +224,7 @@ class Cloud115ResourceProvider:
                             key=entry.id,
                             identity=entry.id,
                             root_path=root_path,
+                            created_at=entry.created_at,
                         )
                     )
 
