@@ -25,3 +25,9 @@
   - 同一直链最多 3 个并发连接，第 4 个返回 403；
   - App 内置播放器（UA `libmpv`）302 后能正常播放，拖动时会再次请求跳转地址。
 - 如果个别播放器在 302 之后不保留 UA，再考虑为该播放器回退到服务端代理拉流（参考 `javdb115/backend/app/api/playback_stream.py`）。MVP 不实现代理。
+
+## 补充（2026-11-16）：拖动时的跳转缓存
+
+- ffmpeg（mpv 的 HTTP 层）每次拖动都会丢掉 302 之后的地址，回头重新请求原始的 `/play/...`（`libavformat/http.c` 的 `http_seek_internal`），响应带 `no-store` 时更不会缓存，所以每次拖动都多绕一趟 Iris。
+- 来源通过 `PlaybackTarget.expires_at` 声明地址可以用到什么时候；宿主据此写 `Cache-Control: private, max-age=N`，没声明或剩余不足 30 秒仍是 `no-store`，N 最长 30 分钟。ffmpeg 在 max-age 内直接用缓存的直链，不再访问跳转地址。
+- 115 的 `expires_at` 取直链缓存的失效时刻（直链过期前 5 分钟）。其他来源按各自直链的有效期声明，不声明则行为不变。

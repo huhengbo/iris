@@ -307,7 +307,7 @@
 
 - `url`：播放器直接访问，宿主返回 302。
 - `path`：服务器本地文件，必须位于 `data/media` 内；宿主解析真实路径后校验，越界拒绝。
-- `expires_at`：ISO 8601 或 `null`。
+- `expires_at`：ISO 8601 或 `null`。表示这个地址可以用到什么时候；宿主据此给 302 加 `Cache-Control: private, max-age=N`（剩余不足 30 秒或为 `null` 时写 `no-store`，N 最大 30 分钟），播放器拖动时在这段时间内直接用该地址，不再回来请求跳转。来源只应在地址确实可以重复使用时填写。
 - `throttle_key`：同一播放会话的摘要；多端同时播放的缓存按它区分。
 
 超时 15 秒。“文件已不存在”由插件转成 `ResourceNotFound`；限流抛

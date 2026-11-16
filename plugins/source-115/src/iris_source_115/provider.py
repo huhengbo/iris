@@ -434,8 +434,9 @@ class Cloud115ResourceSource:
             ) as exc:
                 raise to_sdk_error(exc, now=self._clock.now()) from exc
 
-        url = self._links.get_or_fetch(locator, user_agent, fetch, owner)
-        return PlaybackTarget(url=url.strip())
+        url, valid_until = self._links.get_or_fetch(locator, user_agent, fetch, owner)
+        # 缓存有效期同时告诉宿主：播放器拖动时这段时间内可以直接用这个地址
+        return PlaybackTarget(url=url.strip(), expires_at=valid_until)
 
     @staticmethod
     def _raise_if_limited(wait: int) -> None:

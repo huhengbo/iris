@@ -39,8 +39,11 @@ class DirectLinkCache:
         user_agent: str,
         fetch: Callable[[bool], DirectLink],
         owner: str = "",
-    ) -> str:
-        """fetch 的参数表示别的播放会话此刻是否还拿着这个文件的有效直链。"""
+    ) -> tuple[str, datetime]:
+        """返回直链和缓存有效期的截止时刻。
+
+        fetch 的参数表示别的播放会话此刻是否还拿着这个文件的有效直链。
+        """
         key = (playback_locator, user_agent, owner)
         cached = self._get(key)
         if cached is not None:
@@ -57,8 +60,7 @@ class DirectLinkCache:
                 if cached is not None:
                     return cached
                 link = fetch(self._held_by_others(playback_locator, owner))
-                self._put(key, link)
-                return link.url
+                return link.url, self._put(key, link)
         finally:
             with self._lock:
                 file_lock, users = self._fetching[playback_locator]
@@ -75,28 +77,30 @@ class DirectLinkCache:
                 for key, (_, valid_until) in self._entries.items()
             )
 
-    def _get(self, key: tuple[str, str, str]) -> str | None:
+    def _get(self, key: tuple[str, str, str]) -> tuple[str, datetime] | None:
         with self._lock:
             entry = self._entries.get(key)
             if entry is None:
                 return None
-            url, valid_until = entry
+            _, valid_until = entry
             if self._clock.now() >= valid_until:
                 del self._entries[key]
                 return None
             self._entries.move_to_end(key)
-            return url
+            return entry
 
-    def _put(self, key: tuple[str, str, str], link: DirectLink) -> None:
+    def _put(self, key: tuple[str, str, str], link: DirectLink) -> datetime:
+        """入缓存并返回有效期截止时刻；已经过了有效期的地址不入缓存。"""
         now = self._clock.now()
         if link.expires_at is None:
             valid_until = now + UNKNOWN_EXPIRY_TTL
         else:
             valid_until = link.expires_at - LINK_SAFETY_MARGIN
         if valid_until <= now:
-            return
+            return now
         with self._lock:
             self._entries[key] = (link.url, valid_until)
             self._entries.move_to_end(key)
             while len(self._entries) > self._max_entries:
                 self._entries.popitem(last=False)
+        return valid_until

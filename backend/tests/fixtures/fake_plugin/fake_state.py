@@ -13,6 +13,7 @@ import itertools
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import quote
@@ -128,6 +129,8 @@ class FakeSourceState:
         self.status_page: str | None = None
         self.resource_id = "fake.source"
         self.resolve_path: str | None = None
+        # ISO 8601；设置后 resolve 返回的直链带这个有效期
+        self.resolve_expires_at: str | None = None
         self.root_locator = "0"
         self._config: dict[str, Any] = {}
         if plugin_id == "org.example.fake":
@@ -469,7 +472,11 @@ class FakeSource:
             ua_hash = hashlib.sha1(user_agent.encode()).hexdigest()[:8]
             url = f"https://cdn.example/{node.id}/{quote(node.name)}?ua={ua_hash}"
             self._state.link_cache[key] = url
-        return PlaybackTarget(url=url)
+        expires_at = self._state.resolve_expires_at
+        return PlaybackTarget(
+            url=url,
+            expires_at=datetime.fromisoformat(expires_at) if expires_at else None,
+        )
 
     def delete(self, locator: str) -> None:
         self._state._enter("delete")

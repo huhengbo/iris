@@ -233,6 +233,9 @@ class FakePlugin:
         if op == "set_resolve_path":
             state.resolve_path = params.get("path")
             return None
+        if op == "set_resolve_expires_at":
+            state.resolve_expires_at = params.get("expires_at")
+            return None
         if op == "fail_next":
             state.fail_next[str(params["method"])] = int(params["count"])
             return None

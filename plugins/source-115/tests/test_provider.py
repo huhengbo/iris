@@ -288,6 +288,9 @@ def test_resolve_caches_links_per_user_agent_until_expiry(tmp_path: Path) -> Non
 
     first = source.resolve(f"pc{movie}", "Infuse/1.0")
     assert first.url is not None and first.url.startswith("https://cdn.fake115.test/")
+    # 告诉宿主这个地址能用到缓存失效的时刻（直链 2 小时有效，提前 5 分钟），命中缓存时不变
+    assert first.expires_at == stack.clock.now() + timedelta(hours=2) - timedelta(minutes=5)
+    assert source.resolve(f"pc{movie}", "Infuse/1.0").expires_at == first.expires_at
     assert source.resolve(f"pc{movie}", "Infuse/1.0").url == first.url
     assert len(stack.gateway.link_requests) == 1
 

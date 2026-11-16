@@ -256,6 +256,29 @@ def test_issue_requires_login(client: TestClient, catalog: dict[str, int]) -> No
 # ---- 跳转 ----
 
 
+def test_redirect_cache_control_follows_declared_expiry(
+    client: TestClient, catalog: dict[str, int], cloud115: FakeCloud115, clock: FakeClock
+) -> None:
+    """来源声明了有效期，播放器才可以缓存跳转；声明太短或太长按宿主上下限处理。"""
+    ticket = issue(client, fresh_admin(client), item_id=find(client, "流浪地球")["id"])
+
+    def cache_control(seconds: int | None) -> str:
+        expires_at = None if seconds is None else (clock.now() + timedelta(seconds=seconds))
+        cloud115.control.call(
+            "source",
+            "set_resolve_expires_at",
+            {"expires_at": expires_at.isoformat() if expires_at else None},
+        )
+        response = jump(client, ticket["url"])
+        assert response.status_code == 302
+        return response.headers["cache-control"]
+
+    assert cache_control(None) == "no-store"
+    assert cache_control(10) == "no-store"
+    assert cache_control(600) == "private, max-age=600"
+    assert cache_control(6 * 3600) == "private, max-age=1800"
+
+
 def test_redirect_fetches_link_with_player_ua_and_caches_per_ua(
     client: TestClient, catalog: dict[str, int], cloud115: FakeCloud115, clock: FakeClock
 ) -> None:

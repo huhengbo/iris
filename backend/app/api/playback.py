@@ -8,11 +8,12 @@ from typing import Annotated, Literal, Self
 from urllib.parse import quote
 
 from fastapi import APIRouter, Path, Request
+from iris_plugin_sdk import PlaybackTarget
 from pydantic import BaseModel, Field, model_validator
 from starlette.responses import FileResponse, PlainTextResponse, RedirectResponse, Response
 
 from app.api.schemas import Out
-from app.clock import to_iso
+from app.clock import Clock, to_iso
 from app.deps import AppClock, AppDatabase, CurrentUser, Db, Playback
 from app.library.browse_models import AudioTrack, EmbeddedSubtitle, HdrFormat, MediaInfo
 from app.ops.webhooks import emit as emit_webhook
@@ -22,6 +23,10 @@ from app.playback.service import InlineContent, PlayDenied
 from app.playback.state import WATCHED_RATIO, PlaybackStates, PlayClient
 
 logger = logging.getLogger(__name__)
+
+# 允许播放器缓存跳转的时长：不短于下限才值得缓存，不长于上限，避免来源声明得过长
+REDIRECT_CACHE_MIN_SECONDS = 30
+REDIRECT_CACHE_MAX_SECONDS = 30 * 60
 
 router = APIRouter(tags=["playback"])
 # 跳转不在 /api 下：播放器拿到的是短路径，也不带登录态
@@ -291,6 +296,7 @@ def play_redirect(
     filename: str,
     request: Request,
     playback: Playback,
+    clock: AppClock,
 ) -> Response:
     """文件名只是给播放器识别扩展名的，不参与校验。失败时返回纯文本，播放器只认状态码。"""
     user_agent = request.headers.get("user-agent", "")
@@ -317,4 +323,19 @@ def play_redirect(
     assert target.url is not None
     # 直链绑定 UA：播放器跳转后换 UA 会被 115 拒绝，排查时要看它用的是什么 UA（不记直链和令牌）
     logger.info("play %s redirected, user-agent %r", request.method, user_agent)
-    return RedirectResponse(target.url, status_code=302, headers={"Cache-Control": "no-store"})
+    return RedirectResponse(
+        target.url,
+        status_code=302,
+        headers={"Cache-Control": _redirect_cache_control(target, clock)},
+    )
+
+
+def _redirect_cache_control(target: PlaybackTarget, clock: Clock) -> str:
+    """来源声明了地址的有效期时，让播放器在这段时间内拖动不再回来请求跳转（ffmpeg 会按
+    max-age 缓存 302）；没声明就不缓存。地址只对当前播放器会话有效，所以是 private。"""
+    if target.expires_at is None:
+        return "no-store"
+    remaining = int((target.expires_at - clock.now()).total_seconds())
+    if remaining < REDIRECT_CACHE_MIN_SECONDS:
+        return "no-store"
+    return f"private, max-age={min(remaining, REDIRECT_CACHE_MAX_SECONDS)}"
