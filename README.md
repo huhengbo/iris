@@ -102,7 +102,7 @@ curl -fsSL https://raw.githubusercontent.com/huhengbo/iris/main/scripts/install.
 
 | 场景 | 标签 |
 |---|---|
-| 正式版本 | `0.6.3` |
+| 正式版本 | `0.6.4` |
 | 当前小版本的最新补丁 | `0.6` |
 | 最新正式版本 | `latest` |
 
