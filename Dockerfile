@@ -16,7 +16,7 @@ RUN flutter pub get
 COPY client/ ./
 RUN flutter build web --release --no-web-resources-cdn
 
-FROM python:3.13-slim AS backend-builder
+FROM python:3.15-slim AS backend-builder
 COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /bin/
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_COMPILE_BYTECODE=1 \
@@ -31,7 +31,7 @@ RUN uv sync --locked --no-dev --no-editable
 
 # 插件各自是独立包和独立 venv。先让 SDK 位于 /app/packages，再按 plugins/* 逐个同步；
 # 插件目录还没有时循环为空，构建照常进行（宿主此时没有可加载的插件）。
-FROM python:3.13-slim AS plugin-builder
+FROM python:3.15-slim AS plugin-builder
 COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /bin/
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
@@ -45,7 +45,7 @@ RUN mkdir -p /app/plugins /app/packages \
         uv sync --frozen --project "$project" --no-dev; \
     done
 
-FROM python:3.13-slim AS runtime
+FROM python:3.15-slim AS runtime
 ARG APP_UID=1000
 ARG APP_GID=1000
 # 插件依赖安装在运行时按 uv.lock 重建，镜像里必须带 uv；不加 git（仓库插件禁止 git 源）
