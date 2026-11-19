@@ -31,6 +31,7 @@ from app.library.metadata import Metadata
 from app.library.metadata_providers import MetadataProviders
 from app.ops.backup import BackupService
 from app.ops.tasks import TaskRepository
+from app.playback.repair import StaleFileRepair
 from app.playback.service import PlaybackService
 from app.plugins.fetch import SafeFetcher
 from app.plugins.host import effective_proxy
@@ -120,14 +121,6 @@ def build_container(
         database, clock, plugins, resources, on_change=webdav_service.invalidate
     )
     subtitle_auto = SubtitleAutoDownloader(database, clock, plugins, online_subtitles)
-    playback_service = PlaybackService(
-        database,
-        clock,
-        TokenSigner(config.secret_key, "play-token"),
-        settings,
-        resources,
-        media_dir=config.media_dir,
-    )
     image_store = ImageStore(config.data_dir / "images", clock)
     metadata = Metadata.create(database, clock, MetadataProviders(database, plugins), image_store)
     curation = Curation(database, clock, metadata, resources)
@@ -140,6 +133,16 @@ def build_container(
         resources,
         sleeper=sync_sleeper,
         executor=sync_executor,
+    )
+    playback_service = PlaybackService(
+        database,
+        clock,
+        TokenSigner(config.secret_key, "play-token"),
+        settings,
+        resources,
+        media_dir=config.media_dir,
+        # 播放时发现来源上的文件变了，补一次定向同步再让用户重试
+        on_stale=StaleFileRepair(database, clock, sync),
     )
     plugins.set_resource_changed_handler(sync.source_changed)
     supervisor.set_resource_changed_handler(plugins.resource_changed)

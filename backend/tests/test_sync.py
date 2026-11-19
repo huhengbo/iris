@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from iris_plugin_sdk import ResourceEntry
 
 from app.config import AppConfig
 from app.sync.files import MediaFileRepository, _media_files
@@ -78,7 +79,9 @@ def test_existing_disc_files_are_ignored_instead_of_marked_missing(
                 (folder_id,),
             )
         ] + ["旧片/旧片.iso", "旧盘/BDMV/STREAM/00001.m2ts"]
-        MediaFileRepository(connection, clock).apply_snapshot(folder_id, paths)
+        MediaFileRepository(connection, clock).apply_snapshot(
+            folder_id, [ResourceEntry(path, path, "video") for path in paths]
+        )
         states = dict(
             connection.execute("SELECT rel_path, state FROM media_file WHERE rel_path LIKE '旧%'")
         )
@@ -86,6 +89,48 @@ def test_existing_disc_files_are_ignored_instead_of_marked_missing(
         "旧片/旧片.iso": "ignored",
         "旧盘/BDMV/STREAM/00001.m2ts": "ignored",
     }
+
+
+def test_replaced_file_on_the_same_path_refreshes_its_locator(
+    client: TestClient,
+    admin: dict[str, str],
+    movies: dict[str, Any],
+    config: AppConfig,
+    clock: FakeClock,
+) -> None:
+    """同名文件被重传后路径不变、身份变了：就地刷新定位符，不用重新补全整个目录。"""
+    sync(client, admin)
+    with sqlite3.connect(config.database_path) as connection:
+        connection.row_factory = sqlite3.Row
+        folder_id = connection.execute("SELECT id FROM library_folder LIMIT 1").fetchone()[0]
+        before = connection.execute(
+            "SELECT rel_path, id, identity, playback_locator FROM media_file "
+            "WHERE kind = 'video' ORDER BY rel_path LIMIT 1"
+        ).fetchone()
+        path = str(before["rel_path"])
+        repository = MediaFileRepository(connection, clock)
+        replaced = ResourceEntry(
+            "new-pickcode", path, "video", size=4096, sha1="NEW", identity="new-file-id"
+        )
+        diff = repository.apply_snapshot(folder_id, [replaced], lambda candidate: candidate == path)
+        after = connection.execute(
+            "SELECT state, identity, playback_locator, size, sha1 FROM media_file "
+            "WHERE rel_path = ?",
+            (path,),
+        ).fetchone()
+        unchanged = repository.apply_snapshot(folder_id, [replaced], lambda p: p == path)
+
+    assert before["identity"] != "new-file-id"
+    assert diff.refreshed == 1
+    assert after["state"] == "active"
+    assert (after["identity"], after["playback_locator"], after["size"], after["sha1"]) == (
+        "new-file-id",
+        "new-pickcode",
+        4096,
+        "NEW",
+    )
+    # 身份没变就不再写一次
+    assert unchanged.refreshed == 0
 
 
 @pytest.fixture

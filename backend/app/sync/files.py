@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
+from iris_plugin_sdk import ResourceEntry
+
 from app.clock import Clock, to_iso
 from app.library.media import MediaKind, media_kind
 
@@ -28,6 +30,8 @@ def epoch_time(value: str | None) -> int | None:
 class SnapshotDiff:
     # 从快照里消失的路径数（已标记失效），不含 NFO；新增数在补全阶段统计
     vanished: int
+    # 同一路径上换了文件的记录数，已经就地刷新了身份和播放定位符
+    refreshed: int = 0
 
 
 @dataclass(frozen=True)
@@ -65,17 +69,21 @@ class MediaFileRepository:
     def apply_snapshot(
         self,
         folder_id: int,
-        paths: Iterable[str],
+        entries: Sequence[ResourceEntry],
         scope: Callable[[str], bool] | None = None,
     ) -> SnapshotDiff:
-        """用来源扫描的路径和数据库按路径比对。
+        """用来源扫描出的条目和数据库按路径比对。
 
         新路径和重新出现的失效路径进入待补全；消失的路径标记失效，保留记录和失效时间。
-        scope 是定向同步的范围：只有范围内的记录会因为不在 paths 里而失效。
+        scope 是定向同步的范围：只有范围内的记录会因为不在快照里而失效。
+
+        同一个路径上的文件被换掉时（重传、替换、重新转存），来源给的稳定身份变了，
+        这里就地刷新身份和播放定位符：路径没变，旧定位符在来源上已经失效，不刷新就会
+        一直播 404。
         """
-        paths = list(paths)
-        media = _media_files(paths)
-        snapshot_paths = set(paths)
+        located = {entry.relative_path: entry for entry in entries}
+        media = _media_files(located)
+        snapshot_paths = set(located)
         now = to_iso(self._clock.now())
         existing = {
             row["rel_path"]: row
@@ -84,6 +92,7 @@ class MediaFileRepository:
                 (folder_id,),
             )
         }
+        refreshed = 0
         for path, kind in media.items():
             row = existing.get(path)
             if row is None:
@@ -97,6 +106,9 @@ class MediaFileRepository:
                     "UPDATE media_file SET state = 'pending_enrich', updated_at = ? WHERE id = ?",
                     (now, row["id"]),
                 )
+            elif row["state"] == "active" and _replaced(row, located[path]):
+                self.set_active(row["id"], _file_entry(located[path]), now)
+                refreshed += 1
         vanished = 0
         for path, row in existing.items():
             if path in media or row["state"] == "missing" or (scope and not scope(path)):
@@ -111,7 +123,7 @@ class MediaFileRepository:
             else:
                 self.mark_missing(row["id"], now)
                 vanished += row["kind"] != "nfo"
-        return SnapshotDiff(vanished=vanished)
+        return SnapshotDiff(vanished=vanished, refreshed=refreshed)
 
     def pending(self, folder_ids: Sequence[int]) -> list[PendingFile]:
         if not folder_ids:
@@ -309,6 +321,26 @@ class MediaFileRepository:
             "missing_at = NULL, updated_at = ? WHERE id = ?",
             ("蓝光/ISO 原盘，已忽略", now, media_file_id),
         )
+
+
+def _replaced(row: sqlite3.Row, entry: ResourceEntry) -> bool:
+    """同一个路径上是不是换了文件：来源给出的稳定身份和库里记的不一样。
+
+    来源没有身份（或库里还没补全过）时判断不了，交给原来的补全流程。
+    """
+    identity = entry.identity
+    return bool(identity and row["identity"] and identity != row["identity"])
+
+
+def _file_entry(entry: ResourceEntry) -> FileEntry:
+    return FileEntry(
+        identity=str(entry.identity),
+        name=entry.relative_path.rpartition("/")[2],
+        size=entry.size or 0,
+        playback_locator=entry.playback_locator or entry.locator,
+        sha1=entry.sha1 or "",
+        created_at=iso_time(entry.created_at),
+    )
 
 
 def _media_files(paths: Iterable[str]) -> dict[str, MediaKind]:

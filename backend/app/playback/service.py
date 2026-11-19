@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -27,6 +29,8 @@ from app.playback.throttle import PlayThrottle
 from app.resources.service import FolderSource, ResourceSources
 from app.settings import SettingsService
 from app.subtitles.content import decompress, normalize_language_code, subtitle_media_type
+
+logger = logging.getLogger(__name__)
 
 # 固定 24 小时，不提供配置项（ADR 0015）
 PLAY_TOKEN_TTL = timedelta(hours=24)
@@ -113,6 +117,7 @@ class PlaybackService:
         resources: ResourceSources,
         *,
         media_dir: Path,
+        on_stale: Callable[[int], bool] | None = None,
     ) -> None:
         self._database = database
         self._clock = clock
@@ -120,6 +125,8 @@ class PlaybackService:
         self._settings = settings
         self._resources = resources
         self._media_dir = media_dir.resolve()
+        # 来源上已经找不到文件时补一次定向同步，返回是否排上了任务
+        self._on_stale = on_stale
         self._throttle = PlayThrottle(clock)
 
     # ---- 签发 ----
@@ -334,7 +341,7 @@ class PlaybackService:
                 )
             locator, folder_id = subtitle["playback_locator"], subtitle["folder_id"]
         source = ResourceSources.folder(connection, folder_id)
-        return self._resolve(source, locator, user_agent, throttle_key)
+        return self._resolve(source, locator, user_agent, throttle_key, version_id)
 
     def inline_subtitle(self, user: User, version_id: int, subtitle_id: int) -> InlineContent:
         """WebDAV 等直接取在线字幕内容；外挂字幕仍走来源。"""
@@ -371,7 +378,12 @@ class PlaybackService:
         return self._resolve(source, str(row["playback_locator"]), user_agent, f"webdav:{user.id}")
 
     def _resolve(
-        self, source: FolderSource | None, locator: str, user_agent: str, throttle_key: str
+        self,
+        source: FolderSource | None,
+        locator: str,
+        user_agent: str,
+        throttle_key: str,
+        version_id: int | None = None,
     ) -> PlaybackTarget:
         """按文件所在来源解析，缓存和限流由来源插件自行处理。"""
         if source is not None and not source.enabled:
@@ -384,12 +396,25 @@ class PlaybackService:
         try:
             target = self._resources.open(source).resolve(locator, user_agent, throttle_key)
         except ResourceNotFound as exc:
+            # 来源上文件不见了：多半是文件被重传替换过、库里的定位符过期了。顺手补一次，
+            # 下次播放就正常了
+            if self._repair(version_id):
+                raise PlayDenied(404, "来源上的文件已经变了，正在重新同步，请稍后重试") from None
             raise PlayDenied(404, exc.message or "文件不存在或已失效") from None
         except ResourceRateLimited as exc:
             raise PlayDenied(exc.status_code, exc.message, exc.retry_after) from None
         except ResourceUnavailable as exc:
             raise PlayDenied(503, exc.message) from None
         return self._local_path(target)
+
+    def _repair(self, version_id: int | None) -> bool:
+        if version_id is None or self._on_stale is None:
+            return False
+        try:
+            return self._on_stale(version_id)
+        except Exception:
+            logger.exception("playback repair failed for version %s", version_id)
+            return False
 
     def _local_path(self, target: PlaybackTarget) -> PlaybackTarget:
         """插件给出的本地路径必须是 media_dir 内的真实文件；越界和符号链接都不接受。"""

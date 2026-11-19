@@ -327,7 +327,7 @@ class SyncRun:
         with self._database.session() as connection:
             diff = MediaFileRepository(connection, self._clock).apply_snapshot(
                 folder.id,
-                [entry.relative_path for entry in selected],
+                selected,
                 in_scope,
             )
         self._entries[folder.id] = {entry.relative_path: entry for entry in selected}
@@ -395,11 +395,7 @@ class SyncRun:
                 message = "一个文件也没扫到，可能没有挂载"
                 self._resource_failed(folder, f"{label}{message}，已跳过", message)
                 return None
-            diff = repository.apply_snapshot(
-                folder.id,
-                [entry.relative_path for entry in entries],
-                scope,
-            )
+            diff = repository.apply_snapshot(folder.id, entries, scope)
             repository.record_source_times(
                 folder.id,
                 {

@@ -460,6 +460,31 @@ def test_redirect_reports_missing_files(
     assert len(cloud115.link_requests) == before
 
 
+def test_play_repairs_a_stale_locator(
+    client: TestClient, catalog: dict[str, int], cloud115: FakeCloud115
+) -> None:
+    """来源上的文件被换过、库里的定位符过期：播放失败时补一次定向同步，再点就能播。"""
+    version = movie(client)["versions"][0]
+    ticket = issue(client, fresh_admin(client), version_id=version["id"])
+    with client.app.state.container.database.session() as connection:  # type: ignore[attr-defined]
+        connection.execute(
+            "UPDATE media_file SET identity = 'old-file-id', playback_locator = 'old-pickcode' "
+            "WHERE id = (SELECT media_file_id FROM version WHERE id = ?)",
+            (version["id"],),
+        )
+
+    denied = jump(client, ticket["url"])
+
+    assert denied.status_code == 404
+    assert "正在重新同步" in denied.text
+    # 定向同步在测试里同步跑完，定位符刷新回来了
+    assert jump(client, ticket["url"]).status_code == 302
+    # 只补了一次，没有因为播放器重试再开任务
+    jobs = client.get("/api/admin/sync/jobs", headers=fresh_admin(client))
+    assert jobs.status_code == 200
+    assert [job["trigger"] for job in jobs.json()].count("event") == 1
+
+
 def test_rate_limited_returns_503_with_retry_after(
     client: TestClient, catalog: dict[str, int], cloud115: FakeCloud115
 ) -> None:
