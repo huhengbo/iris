@@ -89,11 +89,7 @@ class _MediaTab extends ConsumerWidget {
           onRetry: () => ref.invalidate(favoritesProvider(kind)),
           onLoadMore: notifier.loadMore,
           onRetryMore: notifier.retryMore,
-          empty: EmptyState(
-            icon: Icons.favorite_border,
-            title: '还没有收藏',
-            message: '在${kind.label}详情页点「收藏」，之后就能在这里找到。',
-          ),
+          empty: const EmptyState(icon: Icons.favorite_border, title: '还没有收藏'),
         ),
       ],
     );
@@ -110,10 +106,9 @@ class _PeopleTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final value = ref.watch(favoritesProvider(kind));
     return switch (value) {
-      AsyncData(:final value) when value.items.isEmpty => EmptyState(
+      AsyncData(:final value) when value.items.isEmpty => const EmptyState(
         icon: Icons.favorite_border,
         title: '还没有收藏',
-        message: '在${kind.label}详情页点「收藏」，之后就能在这里找到。',
       ),
       AsyncData(:final value) => _EntryList(kind: kind, list: value),
       AsyncError(:final error) => ErrorRetry(

@@ -408,10 +408,12 @@ void main() {
       expect(location(router), '/person/7');
     });
 
-    testWidgets('an empty tab explains how to favorite', (tester) async {
+    testWidgets('an empty tab shows title without tutorial copy', (
+      tester,
+    ) async {
       await pumpBrowse(tester, '/me/favorites', emptyTabs);
       expect(find.text('还没有收藏'), findsOneWidget);
-      expect(find.textContaining('在电影详情页点「收藏」'), findsOneWidget);
+      expect(find.textContaining('在电影详情页点「收藏」'), findsNothing);
     });
 
     testWidgets('an error can be retried', (tester) async {

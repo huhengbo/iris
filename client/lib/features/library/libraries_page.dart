@@ -30,7 +30,6 @@ class LibrariesPage extends ConsumerWidget {
             return const EmptyState(
               icon: Icons.video_library_outlined,
               title: '还没有可见的资料库',
-              message: '管理员开放资料库后，影片会出现在这里',
             );
           }
           return ListView.separated(

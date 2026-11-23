@@ -78,11 +78,7 @@ class PlaylistsPage extends ConsumerWidget {
         value: playlists,
         onRetry: () => ref.invalidate(playlistsProvider),
         builder: (items) => items.isEmpty
-            ? const EmptyState(
-                icon: Icons.playlist_play,
-                title: '还没有播放列表',
-                message: '在电影或剧集详情页点「加入播放列表」，之后按顺序连续播放。',
-              )
+            ? const EmptyState(icon: Icons.playlist_play, title: '还没有播放列表')
             : ListView.builder(
                 padding: const EdgeInsets.only(bottom: 24),
                 itemCount: items.length,
@@ -202,11 +198,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
           final items =
               _pending ?? (data['items'] as List<dynamic>?) ?? const [];
           if (items.isEmpty) {
-            return const EmptyState(
-              icon: Icons.playlist_play,
-              title: '列表还是空的',
-              message: '在电影或剧集详情页点「加入播放列表」。',
-            );
+            return const EmptyState(icon: Icons.playlist_play, title: '列表还是空的');
           }
           final header = Padding(
             padding: const EdgeInsets.fromLTRB(
@@ -227,11 +219,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: Text(
-                    !editable
-                        ? '${items.length} 项'
-                        : _saving
+                    editable && _saving
                         ? '${items.length} 项 · 正在保存顺序'
-                        : '${items.length} 项 · 拖动可调整顺序',
+                        : '${items.length} 项',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),

@@ -14,8 +14,8 @@ abstract final class TvMetrics {
   static const stillWidth = 352.0;
   static const gap = 24.0;
 
-  /// 一排卡片上下留出聚焦放大和阴影的空间，不被横向列表裁掉
-  static const railPadding = EdgeInsets.symmetric(horizontal: 6, vertical: 14);
+  /// 一排卡片上下和左右留出聚焦放大和阴影的空间，不被横向列表裁掉
+  static const railPadding = EdgeInsets.symmetric(horizontal: 14, vertical: 16);
 }
 
 /// 聚焦到一张卡片时的回调，用来让页面顶部的「聚焦展示区」跟着换内容。
@@ -38,6 +38,7 @@ class TvPoster extends StatelessWidget {
   const TvPoster({
     super.key,
     required this.media,
+    this.heroTag,
     this.onFocus,
     this.autofocus = false,
     this.width = TvMetrics.posterWidth,
@@ -45,6 +46,7 @@ class TvPoster extends StatelessWidget {
   });
 
   final MediaCard media;
+  final String? heroTag;
   final TvFocusCallback? onFocus;
   final bool autofocus;
   final double width;
@@ -58,6 +60,7 @@ class TvPoster extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final tag = heroTag ?? 'tv:${media.id}';
     return SizedBox(
       width: width,
       child: _focusWatcher(
@@ -70,7 +73,7 @@ class TvPoster extends StatelessWidget {
             ?subtitle,
             if (media.watched) '已看',
           ].join('，'),
-          onTap: () => openDetail(context, media, 'tv:${media.id}'),
+          onTap: () => openDetail(context, media, tag),
           builder: (context, highlight) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -81,7 +84,11 @@ class TvPoster extends StatelessWidget {
                   radius: CinemaRadius.card,
                   dimmed: media.watched,
                   badge: media.watched ? const WatchedBadge() : null,
-                  child: ArtImage(art: media.poster),
+                  child: ArtHero(
+                    tag: tag,
+                    radius: CinemaRadius.card,
+                    child: ArtImage(art: media.poster),
+                  ),
                 ),
               ),
               const SizedBox(height: 10),
@@ -120,6 +127,7 @@ class TvStill extends StatelessWidget {
     required this.media,
     required this.art,
     required this.note,
+    this.heroTag,
     this.progress,
     this.onFocus,
     this.autofocus = false,
@@ -129,6 +137,7 @@ class TvStill extends StatelessWidget {
   final MediaCard media;
   final Artwork art;
   final String note;
+  final String? heroTag;
 
   /// 0–1；为空时不画进度条
   final double? progress;
@@ -142,6 +151,7 @@ class TvStill extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final progress = this.progress;
+    final tag = heroTag ?? 'tv:${media.id}';
     return SizedBox(
       width: width,
       child: _focusWatcher(
@@ -150,7 +160,7 @@ class TvStill extends StatelessWidget {
           autofocus: autofocus,
           focusScale: 1.05,
           semanticLabel: '${media.title}，$note',
-          onTap: () => openDetail(context, media, 'tv:${media.id}'),
+          onTap: () => openDetail(context, media, tag),
           builder: (context, highlight) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -162,7 +172,11 @@ class TvStill extends StatelessWidget {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      ArtImage(art: art),
+                      ArtHero(
+                        tag: tag,
+                        radius: CinemaRadius.card,
+                        child: ArtImage(art: art),
+                      ),
                       if (progress != null)
                         Positioned(
                           left: 12,
@@ -226,7 +240,7 @@ class TvShelf extends StatelessWidget {
         Scrollable.ensureVisible(
           context,
           alignment: 0,
-          duration: Motion.medium,
+          duration: Motion.reduced(context) ? Duration.zero : Motion.medium,
           curve: Motion.emphasized,
         );
       },
@@ -234,7 +248,7 @@ class TvShelf extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 6),
+            padding: const EdgeInsets.only(left: 14),
             child: Text(
               title,
               style: Theme.of(context).textTheme.titleLarge!.copyWith(
@@ -294,6 +308,8 @@ class _TvButtonState extends State<TvButton> {
   Widget build(BuildContext context) {
     final label = widget.label;
     final enabled = widget.onPressed != null;
+    final reduced = Motion.reduced(context);
+    final duration = reduced ? Duration.zero : Motion.focus;
     final filled = _focused || widget.primary;
     final foreground = filled ? CinemaColors.amberInk : CinemaColors.text0;
     final height = widget.primary ? 64.0 : 56.0;
@@ -309,19 +325,26 @@ class _TvButtonState extends State<TvButton> {
             return null;
           },
         ),
+        ButtonActivateIntent: CallbackAction<ButtonActivateIntent>(
+          onInvoke: (_) {
+            widget.onPressed?.call();
+            return null;
+          },
+        ),
       },
       child: Tooltip(
         message: widget.tooltip ?? label ?? '',
         child: GestureDetector(
           onTap: widget.onPressed,
           child: AnimatedScale(
-            scale: _focused ? 1.06 : 1,
-            duration: Motion.focus,
+            scale: _focused && !reduced ? 1.06 : 1,
+            duration: duration,
             curve: Motion.emphasized,
             child: Opacity(
               opacity: enabled ? 1 : .4,
               child: AnimatedContainer(
                 duration: Motion.focus,
+                curve: Motion.emphasized,
                 height: height,
                 width: label == null ? height : null,
                 padding: EdgeInsets.symmetric(
@@ -332,7 +355,7 @@ class _TvButtonState extends State<TvButton> {
                       ? (_focused
                             ? CinemaColors.amber
                             : CinemaColors.amber.withValues(alpha: .86))
-                      : Colors.white.withValues(alpha: .14),
+                      : CinemaColors.text0.withValues(alpha: .14),
                   borderRadius: BorderRadius.circular(height / 2),
                   border: Border.all(
                     color: _focused && widget.primary

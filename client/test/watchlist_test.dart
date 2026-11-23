@@ -217,7 +217,7 @@ void main() {
   });
 
   group('watchlist page', () {
-    testWidgets('the empty state explains how to add and when it clears', (
+    testWidgets('empty state shows title without tutorial copy', (
       tester,
     ) async {
       await pumpWatchlist(
@@ -226,8 +226,7 @@ void main() {
         (api) => api.on(watchlistRoute(), {'items': <Object>[], 'total': 0}),
       );
       expect(find.text('稍后观看是空的'), findsOneWidget);
-      expect(find.textContaining('在电影或剧集详情页点书签图标加入'), findsOneWidget);
-      expect(find.textContaining('看完会自动移出'), findsOneWidget);
+      expect(find.textContaining('在电影或剧集详情页点书签图标加入'), findsNothing);
     });
 
     testWidgets('lists the cards the server returns and opens the detail', (

@@ -175,11 +175,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           if (query.isEmpty && history.isEmpty)
             const SliverFillRemaining(
               hasScrollBody: false,
-              child: EmptyState(
-                icon: Icons.search,
-                title: '搜索影片和剧集',
-                message: '中文片名、原名、英文名和演员、导演姓名都可以',
-              ),
+              child: EmptyState(icon: Icons.search, title: '搜索影片和剧集'),
             )
           else if (query.isEmpty)
             SliverFillRemaining(
@@ -232,10 +228,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   : EmptyState(
                       icon: Icons.search_off,
                       title: '没有找到「$query」',
-                      message:
-                          '检查拼写是否有误\n'
-                          '缩短关键词，或只搜片名中的一部分\n'
-                          '确认账号有权限访问对应资料库，且资料库已扫描',
                       action: TextButton(
                         onPressed: _clear,
                         child: const Text('清除搜索'),
@@ -385,7 +377,6 @@ class _SearchHistory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
@@ -401,13 +392,6 @@ class _SearchHistory extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '搜索影片和剧集',
-                style: text.titleLarge!.copyWith(color: CinemaColors.text0),
-              ),
-              const SizedBox(height: 4),
-              Text('中文片名、原名、英文名和演员、导演姓名都可以', style: text.bodySmall),
-              const SizedBox(height: CinemaSpacing.section),
               Row(
                 children: [
                   const Expanded(child: _SectionHeading('最近搜索')),

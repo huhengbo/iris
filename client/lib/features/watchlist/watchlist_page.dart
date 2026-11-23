@@ -62,11 +62,7 @@ class _WatchlistGrid extends ConsumerWidget {
     if (list.items.isEmpty) {
       return const SliverFillRemaining(
         hasScrollBody: false,
-        child: EmptyState(
-          icon: Icons.bookmark_border,
-          title: '稍后观看是空的',
-          message: '在电影或剧集详情页点书签图标加入，看完会自动移出。',
-        ),
+        child: EmptyState(icon: Icons.bookmark_border, title: '稍后观看是空的'),
       );
     }
     return SliverMainAxisGroup(

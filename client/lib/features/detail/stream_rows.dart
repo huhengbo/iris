@@ -5,7 +5,6 @@ import '../../app/shell.dart' show wideLayoutBreakpoint;
 import '../../app/theme.dart';
 import '../../core/widgets/focus_ring.dart';
 import '../../core/widgets/picker_sheet.dart';
-import '../../core/widgets/snack.dart';
 import '../auth/auth_controller.dart';
 import '../library/browse_api.dart';
 import '../me/preferences_api.dart';
@@ -20,9 +19,9 @@ String _subtitleName(MediaSubtitle subtitle) {
   return subtitle.isOnline ? '$name$suffix · 在线' : '$name$suffix';
 }
 
-/// 按钮行下方的版本、音频、字幕三个下拉，参考 Plex 的轨道选择。
-/// 版本和字幕选完影响接下来播放；画面信息写在版本每一项的说明里，不再单独占一行。
-/// 音频只能查看：音轨由内置播放器打开文件后自己选，这里选了不会改变播放。
+/// 按钮行下方的版本、音频、字幕槽位，参考 Plex 的轨道选择。
+/// 版本和字幕可下拉切换并影响接下来播放；画面信息写在版本每一项的说明里，不再单独占一行。
+/// 音频为只读展示当前默认音轨（不带下拉箭头），切音轨在播放器内完成。
 class MediaStreams extends ConsumerWidget {
   const MediaStreams({
     super.key,
@@ -90,28 +89,17 @@ class MediaStreams extends ConsumerWidget {
                 subtitle: v.media == null ? null : videoSummary(v.media!),
               ),
           ];
-    final audioChoices = audio.length <= 1
-        ? null
-        : <Choice<int>>[
-            for (final (i, track) in audio.indexed)
-              (
-                value: i,
-                label: audioSummary(track),
-                subtitle: track.isDefault ? '播放器默认' : null,
-              ),
-          ];
     final subtitleChoices = subtitles.isEmpty && !canSearch
         ? null
         : <Choice<int?>>[
-            (value: null, label: auto, subtitle: '按「我的 › 设置」里的默认字幕语言'),
+            (value: null, label: auto, subtitle: null),
             for (final s in subtitles)
               (
                 value: s.id,
                 label: _subtitleName(s),
                 subtitle: s.label == _subtitleName(s) ? null : s.label,
               ),
-            if (canSearch)
-              (value: _searchMore, label: '搜索字幕', subtitle: '从在线字幕下载器搜索'),
+            if (canSearch) (value: _searchMore, label: '搜索字幕', subtitle: null),
           ];
 
     final fields = [
@@ -125,19 +113,14 @@ class MediaStreams extends ConsumerWidget {
         choices: versionChoices,
         onSelected: onVersion,
       ),
-      // 没有上报过流信息时没有音轨可选，就不占位置
+      // 没有上报过流信息时没有音轨可选，就不占位置；音频只读展示默认音轨
       if (currentAudio != null)
         _StreamDropdown<int>(
           label: '音频',
           value: audioSummary(currentAudio),
-          current: audio.indexOf(currentAudio),
-          choices: audioChoices,
-          onSelected: (index) {
-            // 播放接口只支持选字幕，音轨由播放器打开文件后自己选
-            if (index != audio.indexOf(currentAudio)) {
-              showSnack(context, '音轨在播放器里切换');
-            }
-          },
+          current: null,
+          choices: null,
+          onSelected: null,
         ),
       // 没有外挂字幕时，只要还能搜在线字幕，也保留这一项
       if (subtitles.isNotEmpty || canSearch || hasEmbedded)
@@ -211,7 +194,7 @@ class _StreamDropdown<T> extends StatelessWidget {
 
   /// 为空表示没有可选项，只展示
   final List<Choice<T>>? choices;
-  final ValueChanged<T> onSelected;
+  final ValueChanged<T>? onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -229,7 +212,7 @@ class _StreamDropdown<T> extends StatelessWidget {
               current: current,
               choices: choices,
             );
-            if (choice != null) onSelected(choice.$1);
+            if (choice != null) onSelected?.call(choice.$1);
           },
         ),
       );
@@ -239,6 +222,7 @@ class _StreamDropdown<T> extends StatelessWidget {
       radius: CinemaRadius.control,
       child: PopupMenuButton<T>(
         tooltip: label,
+        position: PopupMenuPosition.under,
         constraints: const BoxConstraints(minWidth: 240, maxWidth: 380),
         onSelected: onSelected,
         itemBuilder: (context) => [

@@ -8,11 +8,13 @@ class _TvSeekBar extends StatefulWidget {
     required this.position,
     required this.duration,
     required this.onSeekBy,
+    this.buffer = Duration.zero,
   });
 
   final FocusNode focusNode;
   final Duration position;
   final Duration duration;
+  final Duration buffer;
   final void Function(Duration delta) onSeekBy;
 
   @override
@@ -42,6 +44,11 @@ class _TvSeekBarState extends State<_TvSeekBar> {
     final fraction = total > 0
         ? (widget.position.inMilliseconds / total).clamp(0.0, 1.0)
         : 0.0;
+    final bufferFraction = total > 0
+        ? (widget.buffer.inMilliseconds / total).clamp(0.0, 1.0)
+        : 0.0;
+    final reduced = Motion.reduced(context);
+    final focusDuration = reduced ? Duration.zero : Motion.focus;
     final trackHeight = _focused ? 10.0 : 6.0;
     return Focus(
       focusNode: widget.focusNode,
@@ -52,40 +59,73 @@ class _TvSeekBarState extends State<_TvSeekBar> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth;
+            final maxLeft = width > 24 ? width - 24 : 0.0;
+            final left = (width * fraction - 12).clamp(0.0, maxLeft);
             return Stack(
               alignment: Alignment.centerLeft,
               clipBehavior: Clip.none,
               children: [
                 AnimatedContainer(
-                  duration: Motion.short,
+                  duration: focusDuration,
+                  curve: Motion.emphasized,
                   height: trackHeight,
                   decoration: BoxDecoration(
                     color: CinemaColors.track,
                     borderRadius: BorderRadius.circular(trackHeight),
                   ),
                 ),
-                AnimatedContainer(
-                  duration: Motion.short,
-                  height: trackHeight,
-                  width: width * fraction,
-                  decoration: BoxDecoration(
-                    color: CinemaColors.amber,
-                    borderRadius: BorderRadius.circular(trackHeight),
-                  ),
-                ),
-                if (_focused)
-                  Positioned(
-                    left: (width * fraction - 12).clamp(0.0, width - 24),
-                    child: Container(
-                      width: 24,
-                      height: 24,
+                if (bufferFraction > fraction)
+                  SizedBox(
+                    width: width * bufferFraction,
+                    child: AnimatedContainer(
+                      duration: focusDuration,
+                      curve: Motion.emphasized,
+                      height: trackHeight,
                       decoration: BoxDecoration(
-                        color: CinemaColors.amber,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: CinemaColors.text0, width: 3),
+                        color: CinemaColors.text0.withValues(alpha: .45),
+                        borderRadius: BorderRadius.circular(trackHeight),
                       ),
                     ),
                   ),
+                SizedBox(
+                  width: width * fraction,
+                  child: AnimatedContainer(
+                    duration: focusDuration,
+                    curve: Motion.emphasized,
+                    height: trackHeight,
+                    decoration: BoxDecoration(
+                      color: CinemaColors.amber,
+                      borderRadius: BorderRadius.circular(trackHeight),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: left,
+                  child: IgnorePointer(
+                    child: AnimatedOpacity(
+                      opacity: _focused ? 1 : 0,
+                      duration: Motion.focus,
+                      curve: Motion.emphasized,
+                      child: AnimatedScale(
+                        scale: _focused || reduced ? 1 : 0.85,
+                        duration: focusDuration,
+                        curve: Motion.emphasized,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: CinemaColors.amber,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: CinemaColors.text0,
+                              width: 3,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             );
           },

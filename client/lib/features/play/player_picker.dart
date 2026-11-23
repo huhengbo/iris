@@ -126,7 +126,7 @@ Future<void> showPlayLinkDialog(BuildContext context, PlayTicket ticket) {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                '${ticket.title}\n复制到支持网络串流的播放器即可播放，24 小时内有效。',
+                '${ticket.title} · 24 小时内有效',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 12),

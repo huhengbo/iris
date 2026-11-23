@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/shell.dart';
 import '../../app/theme.dart';
+import '../../app/tv.dart';
 import '../../core/api/api_error.dart';
 import '../../core/format.dart';
 import '../../core/providers.dart';
@@ -142,7 +143,7 @@ class _LibraryBrowseTabState extends ConsumerState<LibraryBrowseTab> {
           current: query.watchlist,
           choices: const [
             (value: null, label: '全部', subtitle: null),
-            (value: true, label: '稍后观看', subtitle: '只看加入稍后观看的条目'),
+            (value: true, label: '稍后观看', subtitle: null),
           ],
         );
         if (picked != null) _update(query.copyWith(watchlist: (picked.$1,)));
@@ -193,7 +194,6 @@ class _LibraryBrowseTabState extends ConsumerState<LibraryBrowseTab> {
         ? EmptyState(
             icon: Icons.filter_alt_off_outlined,
             title: '没有符合条件的影片',
-            message: '换个筛选条件试试',
             action: FilledButton.tonal(
               onPressed: () => _update(query.cleared()),
               child: const Text('清除筛选'),
@@ -202,7 +202,6 @@ class _LibraryBrowseTabState extends ConsumerState<LibraryBrowseTab> {
         : const EmptyState(
             icon: Icons.video_library_outlined,
             title: '这个资料库还没有影片',
-            message: '扫描完成并匹配元数据后，影片会出现在这里',
           );
 
     return Column(
@@ -230,6 +229,15 @@ class _LibraryBrowseTabState extends ConsumerState<LibraryBrowseTab> {
                           isAdmin: isAdmin,
                           mode: mode,
                           gutter: gutter,
+                          selectionMode: _selectionMode,
+                          canSelect:
+                              isAdmin &&
+                              !isTelevision(context) &&
+                              (total > 0 || _selectionMode),
+                          selectionBusy: _busy,
+                          onToggleSelection: _selectionMode
+                              ? _exitSelection
+                              : () => setState(() => _selectionMode = true),
                           onChanged: _update,
                           onFilter: _pickFilter,
                           onViewMode: _setViewMode,
@@ -415,6 +423,10 @@ class _Toolbar extends StatelessWidget {
     required this.isAdmin,
     required this.mode,
     required this.gutter,
+    required this.selectionMode,
+    required this.canSelect,
+    required this.selectionBusy,
+    required this.onToggleSelection,
     required this.onChanged,
     required this.onFilter,
     required this.onViewMode,
@@ -426,6 +438,10 @@ class _Toolbar extends StatelessWidget {
   final bool isAdmin;
   final LibraryViewMode mode;
   final double gutter;
+  final bool selectionMode;
+  final bool canSelect;
+  final bool selectionBusy;
+  final VoidCallback onToggleSelection;
   final ValueChanged<LibraryQuery> onChanged;
   final ValueChanged<_FilterDimension> onFilter;
   final ValueChanged<LibraryViewMode> onViewMode;
@@ -512,6 +528,17 @@ class _Toolbar extends StatelessWidget {
                   color: CinemaColors.amber,
                 ),
               ),
+              if (canSelect)
+                IconButton(
+                  tooltip: selectionMode ? '退出选择' : '选择条目',
+                  isSelected: selectionMode,
+                  onPressed: selectionBusy ? null : onToggleSelection,
+                  icon: const Icon(Icons.checklist),
+                  selectedIcon: const Icon(
+                    Icons.close,
+                    color: CinemaColors.amber,
+                  ),
+                ),
             ],
           ),
           if (filters.isNotEmpty) ...[
@@ -543,13 +570,13 @@ class _Toolbar extends StatelessWidget {
     final chips = <({String label, VoidCallback onDelete})>[];
     if (query.genre case final genre?) {
       chips.add((
-        label: '类型：$genre',
+        label: genre,
         onDelete: () => onChanged(query.copyWith(genre: (null,))),
       ));
     }
     if (query.year case final year?) {
       chips.add((
-        label: '年份：$year',
+        label: '$year',
         onDelete: () => onChanged(query.copyWith(year: (null,))),
       ));
     }
@@ -573,13 +600,13 @@ class _Toolbar extends StatelessWidget {
     }
     if (query.status case final status?) {
       chips.add((
-        label: '问题：${status.label}',
+        label: status.label,
         onDelete: () => onChanged(query.copyWith(status: (null,))),
       ));
     }
     if (query.letter case final letter?) {
       chips.add((
-        label: letter == '#' ? '首字母：其他' : '首字母：$letter',
+        label: letter,
         onDelete: () => onChanged(query.copyWith(letter: (null,))),
       ));
     }
@@ -929,12 +956,14 @@ class _MediaList extends StatelessWidget {
                             : CinemaColors.text2,
                       )
                     else if (media.watched)
-                      const Text(
-                        '已看',
-                        style: TextStyle(color: CinemaColors.amber),
-                      )
-                    else
-                      Text('未看', style: Theme.of(context).textTheme.bodySmall),
+                      const Tooltip(
+                        message: '已看',
+                        child: Icon(
+                          Icons.check_circle,
+                          size: 20,
+                          color: CinemaColors.amber,
+                        ),
+                      ),
                   ],
                 ),
               ),

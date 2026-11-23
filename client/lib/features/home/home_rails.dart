@@ -110,6 +110,7 @@ class _RecentCard extends StatelessWidget {
                 children: [
                   ArtHero(
                     tag: heroTag,
+                    radius: CinemaRadius.poster,
                     child: ArtImage(art: art),
                   ),
                   if (progress != null)
@@ -191,11 +192,7 @@ class _EmptyHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const SafeArea(
-      child: EmptyState(
-        icon: Icons.video_library_outlined,
-        title: '片库里还没有影片',
-        message: '扫描资料库后影片会出现在这里；家庭成员的账号需要管理员开放资料库',
-      ),
+      child: EmptyState(icon: Icons.video_library_outlined, title: '片库里还没有影片'),
     );
   }
 }

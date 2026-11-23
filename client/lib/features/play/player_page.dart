@@ -45,6 +45,7 @@ class PlayerPage extends ConsumerStatefulWidget {
 
 class _PlayerPageState extends ConsumerState<PlayerPage>
     with WidgetsBindingObserver {
+  late PlayerArgs _args = widget.args;
   final _player = Player();
 
   /// 电视的解码器和内存都吃紧：4K HEVC 走默认的「硬解后拷回 CPU 再用 GPU 渲染」会卡死，
@@ -70,6 +71,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   double _bufferingPercent = 0;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  Duration _buffer = Duration.zero;
   String? _error;
   bool _subtitlesLoaded = false;
 
@@ -83,6 +85,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   bool _controls = true;
   Timer? _hideTimer;
   Timer? _scrubTimer;
+  Timer? _seekAccumTimer;
   Timer? _errorTimer;
 
   double _rate = 1;
@@ -106,6 +109,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   /// 拖动进度条或滑动屏幕时的目标位置
   Duration? _scrub;
+  Duration? _scrubFrom;
+
+  /// 连续双击或连按方向键快进/快退时累计的目标和偏移量
+  Duration? _seekAccumTarget;
+  Duration _seekAccumDelta = Duration.zero;
 
   /// 快进快退的提示，如「+10 秒」
   String? _toast;
@@ -126,7 +134,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     super.initState();
     _dio = ref.read(apiClientProvider);
     _network = ref.read(networkStatusProvider);
-    _cellularConfirmed = widget.args.cellularConfirmed;
+    _cellularConfirmed = _args.cellularConfirmed;
     unawaited(
       ref.read(playerPrefsProvider).readFill().then((fill) {
         if (mounted) setState(() => _fill = fill);
@@ -153,6 +161,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         (v) => setState(() => _bufferingPercent = v),
       ),
       stream.position.listen((v) => setState(() => _position = v)),
+      stream.buffer.listen((v) => setState(() => _buffer = v)),
       stream.duration.listen((v) {
         setState(() => _duration = v);
         if (v > Duration.zero) {
@@ -190,6 +199,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     }
     _hideTimer?.cancel();
     _scrubTimer?.cancel();
+    _seekAccumTimer?.cancel();
     _errorTimer?.cancel();
     _toastTimer?.cancel();
     _reportTimer?.cancel();
@@ -229,7 +239,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       }
       _cellularConfirmed = true;
     }
-    await _open(widget.args.start);
+    await _open(_args.start);
   }
 
   Future<void> _refreshNetwork() async {
@@ -276,11 +286,41 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     setState(() {
       _error = null;
       _buffering = true;
+      _buffer = Duration.zero;
       _subtitlesLoaded = false;
     });
     await _tuneSeeking();
-    await _player.open(Media(widget.args.url, start: start));
+    await _player.open(Media(_args.url, start: start));
     if (_rate != 1) await _player.setRate(_rate);
+  }
+
+  /// 就地切换媒体源（切集、播放列表连播），保留倍速、画面比例、屏幕方向和现有 mpv 实例。
+  Future<void> _switchTo(PlayerArgs next, {EpisodeQueue? episodes}) async {
+    _errorTimer?.cancel();
+    _scrubTimer?.cancel();
+    _resetSeekAccum();
+    _reported = null;
+    _downloadedSubtitles.clear();
+    _mediaInfoReported = false;
+    _subtitlesLoaded = false;
+    _exiting = false;
+    setState(() {
+      _args = next;
+      if (episodes != null) _episodes = episodes;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+      _buffer = Duration.zero;
+      _bufferingPercent = 0;
+      _buffering = true;
+      _scrub = null;
+      _scrubFrom = null;
+      _seekDragging = false;
+      _dragWasActive = false;
+      _error = null;
+      _switching = false;
+      _boost = false;
+    });
+    await _open(next.start);
   }
 
   /// mpv 默认的绝对跳转是精确跳转：先退回上一个关键帧，再解码到目标位置。网络来源（115 直链）
@@ -301,7 +341,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   Future<void> _loadSubtitles() async {
     if (_subtitlesLoaded) return;
     _subtitlesLoaded = true;
-    for (final track in widget.args.subtitles.reversed) {
+    for (final track in _args.subtitles.reversed) {
       await _player.setSubtitleTrack(track);
     }
   }
@@ -309,7 +349,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 文件时长和画面参数都有了之后，把 mpv 读到的流信息报给服务端，每次播放报一次。
   /// 只是给详情页看的，失败了不打扰观看，下次播放再报。
   Future<void> _reportMediaInfo() async {
-    final versionId = widget.args.versionId;
+    final versionId = _args.versionId;
     final platform = _player.platform;
     final state = _player.state;
     if (_mediaInfoReported ||
@@ -367,10 +407,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 不跟随跳转地请求一次拿回来。
   Future<void> _explain() async {
     try {
-      final (:statusCode, :reason) = await fetchPlayFailure(
-        _dio,
-        widget.args.url,
-      );
+      final (:statusCode, :reason) = await fetchPlayFailure(_dio, _args.url);
       if (!mounted || _error == null) return;
       if ((statusCode ?? 0) >= 400 && reason.isNotEmpty) {
         setState(() => _error = reason);
@@ -398,7 +435,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     try {
       await saveProgress(
         _dio,
-        widget.args.playableId,
+        _args.playableId,
         position: position,
         duration: duration,
         event: finished ? 'ended' : event,
@@ -431,12 +468,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     await _player.pause();
     await _report(finished: finished)
         .timeout(const Duration(seconds: 3), onTimeout: () {});
-    if (finished && widget.args.playlistId != null && mounted) {
+    if (finished && _args.playlistId != null && mounted) {
       try {
         final versionId = await nextPlaylistVersionId(
           _dio,
-          widget.args.playlistId!,
-          widget.args.playableId,
+          _args.playlistId!,
+          _args.playableId,
         );
         if (versionId != null && mounted) {
           final ticket = await issuePlay(
@@ -446,15 +483,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
             builtin: true,
           );
           if (!mounted) return;
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute<void>(
-              builder: (_) => PlayerPage(
-                args: PlayerArgs.fromTicket(
-                  ticket,
-                  _dio.options.baseUrl,
-                  playlistId: widget.args.playlistId,
-                ),
-              ),
+          await _switchTo(
+            PlayerArgs.fromTicket(
+              ticket,
+              _dio.options.baseUrl,
+              castable: _args.castable,
+              cellularConfirmed: _cellularConfirmed,
+              playlistId: _args.playlistId,
             ),
           );
           return;
@@ -497,11 +532,30 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   Future<void> _togglePlay() => _player.playOrPause();
 
+  void _resetSeekAccum() {
+    _seekAccumTimer?.cancel();
+    _seekAccumTarget = null;
+    _seekAccumDelta = Duration.zero;
+  }
+
   Future<void> _seekBy(Duration delta) async {
-    final target = _clamp(_position + delta);
-    final seconds = delta.inSeconds;
+    final sameDirection =
+        _seekAccumTarget != null &&
+        ((delta.isNegative && _seekAccumDelta.isNegative) ||
+            (!delta.isNegative && !_seekAccumDelta.isNegative));
+    final base = _seekAccumTarget ?? _position;
+    final target = _clamp(base + delta);
+    final totalDelta = sameDirection ? _seekAccumDelta + delta : delta;
+    _seekAccumTarget = target;
+    _seekAccumDelta = totalDelta;
+    _seekAccumTimer?.cancel();
+    _seekAccumTimer = Timer(const Duration(milliseconds: 900), () {
+      _seekAccumTarget = null;
+      _seekAccumDelta = Duration.zero;
+    });
+    final seconds = totalDelta.inSeconds;
     _showToast(
-      '${seconds > 0 ? '+' : '−'}${seconds.abs()} 秒 · ${formatClock(target)}',
+      '${seconds >= 0 ? '+' : '−'}${seconds.abs()} 秒 · ${formatClock(target)}',
     );
     await _player.seek(target);
   }
@@ -509,9 +563,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 遥控器在进度条上连按左右键：先累计目标位置，停手后一次性跳转，
   /// 免得每按一下都向网络流发一次 seek
   void _scrubBy(Duration delta) {
+    _resetSeekAccum();
     _hideTimer?.cancel();
     _scrubTimer?.cancel();
-    setState(() => _scrub = _clamp((_scrub ?? _position) + delta));
+    setState(() {
+      _scrubFrom ??= _position;
+      _scrub = _clamp((_scrub ?? _position) + delta);
+    });
     _scrubTimer = Timer(const Duration(milliseconds: 600), () async {
       await _onDragEnd();
       if (mounted) _scheduleHide();
@@ -578,8 +636,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 正在横滑拖进度。控制条显示时也在中间提示偏移量
   bool _seekDragging = false;
 
-  /// 拖到了片头或片尾，触边只震一次
+  /// 拖到了片头或片尾，触边只震一次；离开取消区后再拖回也只震一次
   bool _dragAtEdge = false;
+  bool _dragWasActive = false;
 
   /// 竖滑调亮度或音量：起手时的值读到之前 [_levelFrom] 为空，先攒着位移
   PlayerLevel? _levelKind;
@@ -602,10 +661,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   void _onDragStart(DragStartDetails details, Size size) {
     if (_duration <= Duration.zero) return;
     if (_inDeadZone(details.localPosition, size)) return;
+    _resetSeekAccum();
     _hideTimer?.cancel();
     _dragFrom = _position;
     _dragDx = 0;
     _dragAtEdge = false;
+    _dragWasActive = false;
+    _scrubFrom = null;
     setState(() {
       _seekDragging = true;
       _scrub = _position;
@@ -617,17 +679,29 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     if (!_seekDragging) return;
     _dragDx += details.delta.dx;
     final target = _dragFrom + dragSeekOffset(_dragDx, width, _duration);
+    final clamped = _clamp(target);
     final atEdge = target <= Duration.zero || target >= _duration;
     if (atEdge && !_dragAtEdge) unawaited(HapticFeedback.selectionClick());
     _dragAtEdge = atEdge;
-    setState(() => _scrub = _clamp(target));
+    final inCancelZone =
+        (clamped - _dragFrom).abs() < const Duration(seconds: 1);
+    if (!inCancelZone) {
+      _dragWasActive = true;
+    } else if (_dragWasActive) {
+      unawaited(HapticFeedback.selectionClick());
+      _dragWasActive = false;
+    }
+    setState(() => _scrub = clamped);
   }
 
   /// 划回起点附近（不到 1 秒）松手算取消，不发 seek
   Future<void> _onSeekDragEnd() async {
     if (!_seekDragging) return;
     final target = _scrub;
-    setState(() => _seekDragging = false);
+    setState(() {
+      _seekDragging = false;
+      _dragWasActive = false;
+    });
     if (_controls) _scheduleHide();
     if (target == null) return;
     if ((target - _dragFrom).abs() < const Duration(seconds: 1)) {
@@ -637,10 +711,24 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     await _onDragEnd();
   }
 
+  void _onSeekDragCancel() {
+    if (!_seekDragging) return;
+    setState(() {
+      _seekDragging = false;
+      _scrub = null;
+      _scrubFrom = null;
+      _dragWasActive = false;
+    });
+    if (_controls) _scheduleHide();
+  }
+
   Future<void> _onDragEnd() async {
     final target = _scrub;
     if (target == null) return;
-    setState(() => _scrub = null);
+    setState(() {
+      _scrub = null;
+      _scrubFrom = null;
+    });
     await _player.seek(target);
   }
 
@@ -703,7 +791,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   }
 
   void _onLongPressStart() {
-    if (!_playing) return;
+    if (!_playing || _rate >= 2) return;
+    if (!_tv) unawaited(HapticFeedback.lightImpact());
     setState(() => _boost = true);
     unawaited(_player.setRate(2));
   }
@@ -750,14 +839,14 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
 
   /// 只有从剧集详情进来的才有剧集上下文；播放列表连播自己管下一项
   Future<void> _loadEpisodes() async {
-    final itemId = widget.args.itemId;
-    if (itemId == null || widget.args.playlistId != null) return;
+    final itemId = _args.itemId;
+    if (itemId == null || _args.playlistId != null) return;
     try {
       final queue = await loadEpisodeQueue(
         _dio,
         ref.read(apiBaseUrlProvider),
         itemId: itemId,
-        title: widget.args.title,
+        title: _args.title,
       );
       if (mounted) setState(() => _episodes = queue);
     } on DioException {
@@ -770,13 +859,13 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     if (queue == null || _switching) return;
     _hideTimer?.cancel();
     try {
-      final episode = await queue.neighbour(
+      final target = await queue.neighbour(
         _dio,
         ref.read(apiBaseUrlProvider),
         step,
       );
-      if (episode != null) {
-        await _switchEpisode(episode);
+      if (target != null) {
+        await _switchEpisode(target.current, nextQueue: target);
       } else {
         _showToast(step > 0 ? '已经是最后一集' : '已经是第一集');
       }
@@ -790,17 +879,25 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     final queue = _episodes;
     if (queue == null) return;
     _hideTimer?.cancel();
-    final episode = await showEpisodePicker(context, queue);
+    final baseUrl = ref.read(apiBaseUrlProvider);
+    final picked = await showEpisodePicker(
+      context,
+      queue,
+      loadSeason: (seasonId) => _fetchSeason(_dio, baseUrl, seasonId),
+    );
     if (!mounted) return;
-    if (episode != null && episode.id != queue.current.id) {
-      await _switchEpisode(episode);
+    if (picked != null && picked.current.id != queue.current.id) {
+      await _switchEpisode(picked.current, nextQueue: picked);
     }
     if (mounted) _scheduleHide();
   }
 
-  /// 存好这一集的进度，签发另一集，换掉当前播放页（和播放列表连播一样）。
+  /// 存好这一集的进度，签发另一集，就地换掉当前媒体源。
   /// 签发失败时留在这一集，提示原因。
-  Future<void> _switchEpisode(Episode episode) async {
+  Future<void> _switchEpisode(
+    Episode episode, {
+    required EpisodeQueue nextQueue,
+  }) async {
     if (_switching) return;
     setState(() => _switching = true);
     _showToast('正在切换到第 ${episode.number} 集…');
@@ -813,21 +910,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         builtin: true,
       );
       if (!mounted) return;
-      _exiting = true;
-      await _player.pause();
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => PlayerPage(
-            args: PlayerArgs.fromTicket(
-              ticket,
-              _dio.options.baseUrl,
-              castable: widget.args.castable,
-              cellularConfirmed: _cellularConfirmed,
-              itemId: widget.args.itemId,
-            ),
-          ),
+      await _switchTo(
+        PlayerArgs.fromTicket(
+          ticket,
+          _dio.options.baseUrl,
+          castable: _args.castable,
+          cellularConfirmed: _cellularConfirmed,
+          itemId: _args.itemId,
         ),
+        episodes: nextQueue,
       );
     } on DioException {
       if (!mounted) return;
@@ -860,12 +951,12 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 播放中搜索并下载在线字幕。拿到带签名的 path 后直接用当前服务器地址
   /// 交给 mpv，addSubtitle/setSubtitleTrack 不会重新打开文件，播放不中断。
   Future<void> _searchSubtitles() async {
-    final versionId = widget.args.versionId;
+    final versionId = _args.versionId;
     if (versionId == null) return;
     final result = await showSubtitleSearchSheet(
       context,
       versionId: versionId,
-      title: widget.args.title,
+      title: _args.title,
     );
     if (result == null || !mounted) return;
     final path = result.playPath;
@@ -892,10 +983,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     // 提前取下载器状态，用户打开设置面板时「搜索字幕」能直接出现
     final providers =
         ref.watch(authControllerProvider).value?.canDownloadSubtitles == true
-        ? ref.watch(subtitleProvidersProvider(widget.args.versionId)).value
+        ? ref.watch(subtitleProvidersProvider(_args.versionId)).value
         : null;
     _canSearchSubtitles =
-        widget.args.versionId != null && (providers?.usable ?? false);
+        _args.versionId != null && (providers?.usable ?? false);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -947,6 +1038,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                         ? null
                         : (_) => _onLongPressStart(),
                     onLongPressEnd: _locked ? null : (_) => _onLongPressEnd(),
+                    onLongPressCancel: _locked ? null : _onLongPressEnd,
                     onHorizontalDragStart: _locked
                         ? null
                         : (d) => _onDragStart(d, size),
@@ -956,7 +1048,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     onHorizontalDragEnd: _locked
                         ? null
                         : (_) => _onSeekDragEnd(),
-                    onHorizontalDragCancel: _locked ? null : _onSeekDragEnd,
+                    onHorizontalDragCancel: _locked ? null : _onSeekDragCancel,
                     onVerticalDragStart: _locked
                         ? null
                         : (d) => _onLevelStart(d, size),
@@ -965,8 +1057,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                     onVerticalDragCancel: _locked ? null : _onLevelEnd,
                   ),
                   // 缓冲时屏幕正中转圈并写缓冲到多少（照爆米花）
-                  if (_buffering && _error == null)
-                    _BufferingIndicator(percent: _bufferingPercent),
+                  _BufferingIndicator(
+                    visible: _buffering && _error == null,
+                    percent: _bufferingPercent,
+                  ),
                   _centerLabel(),
                   _controlsLayer(),
                   if (_error case final error?) _errorLayer(error),
@@ -1015,11 +1109,18 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     final scrub = _scrub;
     final level = _level;
     final String? text;
+    var dimmed = false;
     if (scrub != null && _seekDragging) {
+      final offset = scrub - _dragFrom;
+      dimmed = offset.abs() < const Duration(seconds: 1);
       text =
-          '${formatSeekOffset(scrub - _dragFrom)} · '
+          '${formatSeekOffset(offset)} · '
           '${formatClock(scrub)} / ${formatClock(_duration)}';
-    } else if (scrub != null && !_controls) {
+    } else if (scrub != null && _scrubFrom != null) {
+      text =
+          '${formatSeekOffset(scrub - _scrubFrom!)} · '
+          '${formatClock(scrub)} / ${formatClock(_duration)}';
+    } else if (scrub != null) {
       text = '${formatClock(scrub)} / ${formatClock(_duration)}';
     } else if (_boost) {
       text = '2× 快进中';
@@ -1032,46 +1133,24 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         ? Text(
             text,
             style: Theme.of(context).textTheme.titleSmall!.copyWith(
-              color: CinemaColors.text0,
+              color: dimmed ? CinemaColors.text2 : CinemaColors.text0,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           )
         : null;
-    return IgnorePointer(
-      child: Align(
-        alignment: const Alignment(0, -0.55),
-        child: AnimatedOpacity(
-          opacity: content == null ? 0 : 1,
-          duration: Motion.short,
-          child: content == null
-              ? const SizedBox.shrink()
-              : DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: CinemaColors.scrim,
-                    borderRadius: BorderRadius.circular(CinemaRadius.pill),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    child: content,
-                  ),
-                ),
-        ),
-      ),
-    );
+    return _CenterHud(content: content);
   }
 
   Widget _controlsLayer() {
     return PlayerControls(
       tv: _tv,
       visible: _controls,
-      title: widget.args.displayTitle,
+      title: _args.displayTitle,
       position: _scrub ?? _position,
       duration: _duration,
+      buffer: _buffer,
       playing: _playing,
-      castable: widget.args.castable,
+      castable: _args.castable,
       rate: _rate,
       fill: _fill,
       locked: _locked,
@@ -1100,7 +1179,11 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       onRotate: _tv ? null : () => unawaited(_rotate()),
       onToggleFill: _tv ? null : () => unawaited(_setFill(!_fill)),
       onToggleLock: _tv ? null : _toggleLock,
-      onScrubStart: () => _hideTimer?.cancel(),
+      onScrubStart: () {
+        _resetSeekAccum();
+        _hideTimer?.cancel();
+        _scrubFrom = null;
+      },
       onScrub: (position) => setState(() => _scrub = position),
       onScrubEnd: () {
         unawaited(_onDragEnd());

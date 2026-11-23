@@ -84,11 +84,7 @@ class _HistorySheet extends ConsumerWidget {
         builder: (list) => list.isEmpty
             ? const SizedBox(
                 height: 220,
-                child: EmptyState(
-                  icon: Icons.history,
-                  title: '还没有历史对话',
-                  message: '提问之后，对话会保存在这里',
-                ),
+                child: EmptyState(icon: Icons.history, title: '还没有历史对话'),
               )
             : ListView.builder(
                 shrinkWrap: true,

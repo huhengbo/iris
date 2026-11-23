@@ -119,7 +119,10 @@ void main() {
   testWidgets('clear button resets the query and shows history', (
     tester,
   ) async {
-    await pumpSearch(tester, initial: '流浪');
+    await pumpSearch(tester);
+    await tester.enterText(find.byType(TextField), '流浪');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
     expect(find.text('流浪地球'), findsOneWidget);
 
     await tester.tap(find.byTooltip('清除'));
@@ -130,7 +133,8 @@ void main() {
       '',
     );
     expect(find.text('流浪地球'), findsNothing);
-    expect(find.text('搜索影片和剧集'), findsOneWidget);
+    expect(find.text('最近搜索'), findsOneWidget);
+    expect(find.text('搜索影片和剧集'), findsNothing);
   });
 
   testWidgets('shows people, episodes and works as separate sections', (
@@ -152,13 +156,12 @@ void main() {
     expect(find.text('人物页'), findsOneWidget);
   });
 
-  testWidgets('empty result explains what to try', (tester) async {
+  testWidgets('empty result shows not found and allows clearing', (
+    tester,
+  ) async {
     await pumpSearch(tester, initial: '不存在');
 
     expect(find.text('没有找到「不存在」'), findsOneWidget);
-    expect(find.textContaining('检查拼写'), findsOneWidget);
-    expect(find.textContaining('缩短关键词'), findsOneWidget);
-    expect(find.textContaining('资料库'), findsOneWidget);
 
     await tester.tap(find.text('清除搜索'));
     await tester.pumpAndSettle();

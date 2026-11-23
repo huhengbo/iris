@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import 'package:iris/core/providers.dart';
 import 'package:iris/features/auth/auth_controller.dart';
 import 'package:iris/features/detail/detail_page.dart';
 import 'package:iris/features/detail/related_row.dart';
+import 'package:iris/features/library/browse_api.dart';
 
 import 'support/fake_api.dart';
 
@@ -399,7 +402,7 @@ void main() {
   });
 
   group('stream dropdowns', () {
-    testWidgets('version, audio and subtitle are drop-downs, no video row', (
+    testWidgets('version and subtitle are drop-downs, audio is read-only', (
       tester,
     ) async {
       await _pump(tester, role: 'user');
@@ -409,6 +412,22 @@ void main() {
       expect(find.text('字幕'), findsOneWidget);
       // 画面信息并进版本下拉，不再单独占一行
       expect(find.text('画面'), findsNothing);
+      final audioField = find.ancestor(
+        of: find.text('音频'),
+        matching: find.byType(Row),
+      );
+      expect(
+        find.descendant(
+          of: audioField,
+          matching: find.byIcon(Icons.expand_more),
+        ),
+        findsNothing,
+      );
+      await tester.tap(find.text('音频'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.byType(PopupMenuItem<int>), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
     });
 
     testWidgets('version items carry the picture description', (tester) async {
@@ -518,6 +537,90 @@ void main() {
 
       // 4 张分集卡各一个，加上页头里整部剧的一个
       expect(find.byTooltip('标记已看'), findsNWidgets(5));
+    });
+
+    testWidgets('wide screens show a horizontal skeleton while season loads', (
+      tester,
+    ) async {
+      final api = FakeAdminApi()
+        ..on('GET /api/items/10', {...seriesDetail(), 'id': 10})
+        ..on('GET /api/items/10/related?limit=$relatedLimit', <Object>[])
+        ..on('GET /api/me/preferences', {'subtitle_language': 'zh-CN'});
+      final dio = Dio(BaseOptions(baseUrl: 'http://test'))
+        ..httpClientAdapter = api;
+      final router = _router('/item/10');
+      addTearDown(router.dispose);
+      tester.view.physicalSize = const Size(1280 * 2, 1600 * 2);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(dio),
+            apiBaseUrlProvider.overrideWithValue('http://test'),
+            authControllerProvider.overrideWith(() => _User('user')),
+            relatedProvider(10).overrideWith((_) async => const []),
+            seasonProvider(21)
+                .overrideWith((ref) => Completer<SeasonDetail>().future),
+          ],
+          child: MaterialApp.router(theme: buildTheme(), routerConfig: router),
+        ),
+      );
+      for (var i = 0; i < 10 && find.text('第 1 季').evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+
+      final horizontalSkeletons = tester.widgetList<AspectRatio>(
+        find.byWidgetPredicate(
+          (w) => w is AspectRatio && (w.aspectRatio - 16 / 9).abs() < 0.01,
+        ),
+      );
+      expect(horizontalSkeletons.length, 4);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+
+    testWidgets('scrolling past backdrop reveals the sticky top bar title', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        role: 'user',
+        detail: {...seriesDetail(), 'id': 10},
+        related: [card(11, '星际穿越')],
+        setup: (api) => api.on('GET /api/seasons/21', {
+          'id': 21,
+          'item_id': 10,
+          'number': 1,
+          'name': '第 1 季',
+          'overview': null,
+          'air_date': null,
+          'poster': <Object>[],
+          'episodes': [for (var n = 1; n <= 25; n++) episode(n)],
+        }),
+      );
+
+      // 未滚动前顶栏不挂载片名，只有正文一处
+      expect(
+        find.descendant(
+          of: find.byType(DetailTopBar),
+          matching: find.text('三体'),
+        ),
+        findsNothing,
+      );
+      expect(find.text('三体'), findsOneWidget);
+
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+
+      final barTitle = find.descendant(
+        of: find.byType(DetailTopBar),
+        matching: find.text('三体'),
+      );
+      expect(barTitle, findsOneWidget);
+      expect(tester.getTopLeft(barTitle).dy, lessThan(100));
     });
   });
 

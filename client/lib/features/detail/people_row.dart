@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/motion.dart';
 import '../../app/shell.dart' show wideLayoutBreakpoint;
 import '../../app/theme.dart';
 import '../../core/widgets/rail_scroller.dart';
@@ -106,7 +107,9 @@ class _PersonChip extends StatelessWidget {
         onTap: () => context.push('/person/${person.personId}'),
         builder: (context, highlight) => Column(
           children: [
-            Container(
+            AnimatedContainer(
+              duration: Motion.reduced(context) ? Duration.zero : Motion.focus,
+              curve: Motion.emphasized,
               width: avatar,
               height: avatar,
               foregroundDecoration: BoxDecoration(

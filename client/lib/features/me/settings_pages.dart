@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/section_title.dart';
 import '../admin/admin_widgets.dart' show AdminListWidth;
@@ -32,7 +31,6 @@ class LocalGeneralPage extends ConsumerWidget {
               SectionTitle('更新'),
               AutoCheckUpdateTile(),
               DownloadPrefixTile(),
-              _Note('国内网络访问 GitHub 慢时填写加速前缀，检查更新和下载安装包都会经过它。'),
             ],
           ],
         ),
@@ -58,7 +56,6 @@ class PlayerSettingsPage extends ConsumerWidget {
           ? const EmptyState(
               icon: Icons.play_circle_outline,
               title: '这个平台没有可选的播放器',
-              message: '播放时直接用系统默认方式打开，不需要记默认播放器。',
             )
           : AdminListWidth(
               bottom: 32,
@@ -67,7 +64,6 @@ class PlayerSettingsPage extends ConsumerWidget {
                 children: const [
                   SectionTitle('播放', first: true),
                   DefaultPlayerTile(),
-                  _Note('默认播放器只在这台设备上记住，换设备或换账号都不影响。'),
                 ],
               ),
             ),
@@ -90,27 +86,9 @@ class SubtitleSettingsPage extends StatelessWidget {
           children: const [
             SectionTitle('字幕', first: true),
             SubtitleLanguageTile(),
-            _Note('播放时默认优先选中这种语言的字幕；没有对应语言时用服务器或播放器的选择。音轨在播放器里当次选择。'),
           ],
         ),
       ),
     );
   }
-}
-
-/// 设置行下面的说明文字，和行标题左侧图标对齐。
-class _Note extends StatelessWidget {
-  const _Note(this.message);
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(56, 4, CinemaSpacing.gutter, 8),
-    child: Text(
-      message,
-      style: Theme.of(context).textTheme.bodySmall!
-          .copyWith(color: CinemaColors.text2),
-    ),
-  );
 }

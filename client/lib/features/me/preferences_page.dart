@@ -50,7 +50,6 @@ class _HomeFavoritesTileState extends ConsumerState<HomeFavoritesTile> {
       child: ListTile(
         leading: const Icon(Icons.favorite_border),
         title: const Text('首页显示我的收藏'),
-        subtitle: const Text('打开后收藏行出现在稍后观看下面'),
         trailing: saving
             ? const SizedBox.square(
                 dimension: 20,
@@ -200,13 +199,11 @@ class _WebDavSectionState extends ConsumerState<WebDavSection> {
           child: ListTile(
             leading: const Icon(Icons.cloud_sync_outlined),
             title: const Text('WebDAV'),
-            subtitle: Text(
-              loading
-                  ? '正在读取状态'
-                  : info == null
-                  ? '暂时无法读取状态'
-                  : '在 Infuse 等播放器里直接浏览片库',
-            ),
+            subtitle: loading
+                ? const Text('正在读取状态')
+                : info == null
+                ? const Text('暂时无法读取状态')
+                : null,
             trailing: loading
                 ? const SizedBox.square(
                     dimension: 20,
@@ -249,7 +246,7 @@ class _WebDavSectionState extends ConsumerState<WebDavSection> {
                   ),
                 CopyRow(label: '用户名', value: info.username, tooltip: '复制用户名'),
                 const SizedBox(height: 4),
-                Text('密码就是登录密码，修改登录密码后同步生效', style: textTheme.bodySmall),
+                Text('密码同登录密码', style: textTheme.bodySmall),
               ],
             ),
           ),

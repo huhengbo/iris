@@ -59,8 +59,12 @@ class _TvHomePageState extends ConsumerState<TvHomePage> {
 
   void _focus(MediaCard media, [String? note]) {
     final spot = _Spot(media, note);
-    if (_spot.value == spot) return;
-    _spot.value = spot;
+    final changed = _spot.value != spot;
+    if (changed) _spot.value = spot;
+    if (!changed &&
+        (_overviewId.value == media.id || (_settle?.isActive ?? false))) {
+      return;
+    }
     _settle?.cancel();
     _settle = Timer(const Duration(milliseconds: 400), () {
       _overviewId.value = media.id;
@@ -87,7 +91,6 @@ class _TvHomePageState extends ConsumerState<TvHomePage> {
       return const EmptyState(
         icon: Icons.video_library_outlined,
         title: '还没有内容',
-        message: '在管理端添加资料库并同步后，这里会出现你的影视。',
       );
     }
     final first = shelves.firstOrNull?.first;
@@ -112,7 +115,7 @@ class _TvHomePageState extends ConsumerState<TvHomePage> {
                 child: ListView.builder(
                   scrollCacheExtent: const ScrollCacheExtent.pixels(900),
                   padding: EdgeInsets.fromLTRB(
-                    34,
+                    26,
                     0,
                     MediaQuery.paddingOf(context).right,
                     MediaQuery.paddingOf(context).bottom + 24,
@@ -120,7 +123,7 @@ class _TvHomePageState extends ConsumerState<TvHomePage> {
                   itemCount: shelves.length,
                   itemBuilder: (context, i) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: shelves[i].build(i == 0),
+                    child: shelves[i].build(i == 0, i),
                   ),
                 ),
               ),
@@ -279,7 +282,7 @@ class _ShelfData {
 
   _Entry? get first => entries.firstOrNull;
 
-  Widget build(bool autofocusFirst) {
+  Widget build(bool autofocusFirst, int shelfIndex) {
     final still = kind == _ShelfKind.still;
     return TvShelf(
       title: title,
@@ -293,6 +296,7 @@ class _ShelfData {
               media: e.media,
               art: e.art,
               note: e.note,
+              heroTag: 'tv:$shelfIndex:${e.media.id}',
               progress: e.progress,
               autofocus: autofocusFirst && i == 0,
               onFocus: (m) => onFocus(m, e.progress == null ? null : e.note),
@@ -300,6 +304,7 @@ class _ShelfData {
           else
             TvPoster(
               media: e.media,
+              heroTag: 'tv:$shelfIndex:${e.media.id}',
               autofocus: autofocusFirst && i == 0,
               onFocus: (m) => onFocus(m),
             ),
@@ -329,7 +334,9 @@ class _Backdrop extends StatelessWidget {
                     spot.media.poster,
                   ].firstWhere((a) => !a.isEmpty, orElse: () => Artwork.none);
             return AnimatedSwitcher(
-              duration: Motion.long,
+              duration: Motion.reduced(context) ? Motion.short : Motion.long,
+              switchInCurve: Motion.emphasized,
+              switchOutCurve: Motion.emphasized,
               child: SizedBox.expand(
                 key: ValueKey(spot?.media.id),
                 child: art.isEmpty
@@ -339,23 +346,31 @@ class _Backdrop extends StatelessWidget {
             );
           },
         ),
-        const DecoratedBox(
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [Color(0xF2120E0B), Color(0xB3120E0B), Color(0x00120E0B)],
-              stops: [0, .42, .85],
+              colors: [
+                CinemaColors.bg.withValues(alpha: .95),
+                CinemaColors.bg.withValues(alpha: .7),
+                CinemaColors.bg.withValues(alpha: 0),
+              ],
+              stops: const [0, .42, .85],
             ),
           ),
         ),
-        const DecoratedBox(
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0x00120E0B), Color(0xE6120E0B), Color(0xFF120E0B)],
-              stops: [.2, .52, .72],
+              colors: [
+                CinemaColors.bg.withValues(alpha: 0),
+                CinemaColors.bg.withValues(alpha: .9),
+                CinemaColors.bg,
+              ],
+              stops: const [.2, .52, .72],
             ),
           ),
         ),
@@ -390,6 +405,8 @@ class _SpotlightArea extends StatelessWidget {
                   ? const SizedBox.shrink()
                   : AnimatedSwitcher(
                       duration: Motion.short,
+                      switchInCurve: Motion.emphasized,
+                      switchOutCurve: Motion.emphasized,
                       child: KeyedSubtree(
                         key: ValueKey(spot),
                         child: _SpotText(spot: spot, overviewId: overviewId),
@@ -420,6 +437,15 @@ class _SpotText extends ConsumerWidget {
       if (media.rating != null && media.rating! > 0)
         'TMDB ${media.rating!.toStringAsFixed(1)}',
     ].join('  ·  ');
+    final overviewStyle = textTheme.titleMedium!.copyWith(
+      color: CinemaColors.text1,
+      height: 1.5,
+    );
+    final overviewSlotHeight =
+        (MediaQuery.textScalerOf(context).scale(overviewStyle.fontSize ?? 16) *
+                (overviewStyle.height ?? 1.5) *
+                3)
+            .ceilToDouble();
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -454,21 +480,30 @@ class _SpotText extends ConsumerWidget {
         ValueListenableBuilder<int?>(
           valueListenable: overviewId,
           builder: (context, id, _) {
-            final overview = id == media.id
-                ? ref.watch(mediaDetailProvider(media.id)).value?.overview
+            final raw = id == media.id
+                ? ref
+                      .watch(mediaDetailProvider(media.id))
+                      .value
+                      ?.overview
+                      ?.trim()
                 : null;
-            if (overview == null || overview.trim().isEmpty) {
-              return const SizedBox(height: 8);
-            }
+            final overview = raw != null && raw.isNotEmpty ? raw : null;
             return Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Text(
-                overview.trim(),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.titleMedium!.copyWith(
-                  color: CinemaColors.text1,
-                  height: 1.5,
+              child: SizedBox(
+                height: overviewSlotHeight,
+                child: AnimatedOpacity(
+                  opacity: overview != null ? 1 : 0,
+                  duration: Motion.short,
+                  curve: Motion.emphasized,
+                  child: overview == null
+                      ? const SizedBox.shrink()
+                      : Text(
+                          overview,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: overviewStyle,
+                        ),
                 ),
               ),
             );

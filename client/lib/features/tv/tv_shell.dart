@@ -13,6 +13,7 @@ import '../library/browse_api.dart';
 /// 实际占位由 [TvShell] 再加上左边的系统边距（见 app/tv.dart）。
 const tvSidebarCollapsedWidth = 80.0;
 const tvSidebarExpandedWidth = 288.0;
+const _tvSidebarLabelWidth = tvSidebarExpandedWidth - 24 - 56;
 
 /// 电视的主界面框架：Plex 大屏端的可折叠左侧栏。
 /// 依次是搜索、首页、稍后观看和各资料库，底部是设置和切换用户。
@@ -455,26 +456,35 @@ class _SideItemState extends State<_SideItem> {
                 ),
                 Expanded(
                   child: ClipRect(
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 10),
-                      child: AnimatedOpacity(
-                        opacity: widget.expanded ? 1 : 0,
-                        duration: Motion.reduced(context)
-                            ? Duration.zero
-                            : Motion.focus,
-                        // 收起时宽度只剩图标那 56，文字先淡出再被裁掉，不跳动
-                        child: Text(
-                          destination.label,
-                          maxLines: 1,
-                          softWrap: false,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium!
-                              .copyWith(
-                                color: foreground,
-                                fontWeight: selected || _focused
-                                    ? FontWeight.w700
-                                    : FontWeight.w600,
-                              ),
+                    child: OverflowBox(
+                      alignment: Alignment.centerLeft,
+                      minWidth: 0,
+                      maxWidth: _tvSidebarLabelWidth,
+                      child: SizedBox(
+                        width: _tvSidebarLabelWidth,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 10, right: 12),
+                          child: AnimatedOpacity(
+                            opacity: widget.expanded ? 1 : 0,
+                            duration: Motion.reduced(context)
+                                ? Duration.zero
+                                : Motion.focus,
+                            curve: Motion.emphasized,
+                            // 定宽布局再裁切，展开/收起途中不重折也不跳省略号
+                            child: Text(
+                              destination.label,
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium!
+                                  .copyWith(
+                                    color: foreground,
+                                    fontWeight: selected || _focused
+                                        ? FontWeight.w700
+                                        : FontWeight.w600,
+                                  ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -529,12 +539,36 @@ class _SideLoading extends StatelessWidget {
             ),
           ),
         ),
-        if (expanded)
-          Text(
-            '正在加载资料库…',
-            style: Theme.of(context).textTheme.bodySmall!
-                .copyWith(color: CinemaColors.text2),
+        Expanded(
+          child: ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.centerLeft,
+              minWidth: 0,
+              maxWidth: _tvSidebarLabelWidth,
+              child: SizedBox(
+                width: _tvSidebarLabelWidth,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: AnimatedOpacity(
+                    opacity: expanded ? 1 : 0,
+                    duration: Motion.reduced(context)
+                        ? Duration.zero
+                        : Motion.focus,
+                    curve: Motion.emphasized,
+                    child: Text(
+                      '正在加载资料库…',
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall!
+                          .copyWith(color: CinemaColors.text2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
+        ),
       ],
     ),
   );

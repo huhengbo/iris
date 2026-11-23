@@ -638,12 +638,6 @@ class AiEmptyChat extends StatelessWidget {
               '想看点什么？',
               style: textTheme.titleMedium!.copyWith(color: CinemaColors.text0),
             ),
-            const SizedBox(height: 4),
-            Text(
-              '描述心情或口味，我来帮你从资料库里找',
-              textAlign: TextAlign.center,
-              style: textTheme.bodySmall,
-            ),
             const SizedBox(height: 20),
             Wrap(
               alignment: WrapAlignment.center,

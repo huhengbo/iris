@@ -217,6 +217,27 @@ void main() {
       TvLayout.overscan.left + tvSidebarExpandedWidth,
     );
   });
+
+  testWidgets('sidebar transition keeps label layout fixed without overflow', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+    final expandedLabelWidth = tester.getSize(find.text('首页')).width;
+
+    // 按左键触发展开，在动画中段抓帧验证不溢出且文字宽度稳定
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.text('首页')).width, expandedLabelWidth);
+
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.text('首页')).width, expandedLabelWidth);
+  });
 }
 
 class _HomeContent extends StatelessWidget {

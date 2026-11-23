@@ -12,9 +12,7 @@ import 'app/launch_splash.dart';
 import 'app/router.dart';
 import 'app/theme.dart';
 import 'app/tv.dart';
-import 'core/servers.dart';
 import 'core/trust_roots.dart';
-import 'features/auth/auth_controller.dart';
 
 Future<void> main() async {
   // Web 用路径式地址（/item/12），与服务端的 SPA 回退一致；其他平台无影响
@@ -56,25 +54,9 @@ class IrisApp extends ConsumerWidget {
           PointerDeviceKind.trackpad,
         },
       ),
-      // 开机动画在 TV 的界面缩放外面，和系统启动屏按同样的屏幕尺寸对齐；
-      // 遥控器提示在缩放里面（让开过扫描），等开机动画张开后才出现
+      // 开机动画在 TV 的界面缩放外面，和系统启动屏按同样的屏幕尺寸对齐。
       builder: (context, child) => LaunchGate(
-        child: television
-            ? televisionBuilder(
-                context,
-                Consumer(
-                  builder: (context, ref, child) => TvRemoteHint(
-                    enabled: sessionSettled(
-                      ref.watch(authControllerProvider),
-                      ref.watch(serverGateProvider),
-                    ),
-                    delay: LaunchSplash.duration,
-                    child: child!,
-                  ),
-                  child: child,
-                ),
-              )
-            : child!,
+        child: television ? televisionBuilder(context, child) : child!,
       ),
       routerConfig: ref.watch(routerProvider),
     );

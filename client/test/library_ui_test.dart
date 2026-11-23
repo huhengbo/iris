@@ -665,14 +665,14 @@ void main() {
       expect(calls, 2);
     });
 
-    testWidgets('empty library explains how content gets there', (
+    testWidgets('empty library shows title without tutorial copy', (
       tester,
     ) async {
       await pumpBrowse(tester, '/', (api) {
         api.on('GET /api/home', home());
       });
       expect(find.text('片库里还没有影片'), findsOneWidget);
-      expect(find.textContaining('需要管理员开放资料库'), findsOneWidget);
+      expect(find.textContaining('需要管理员开放资料库'), findsNothing);
     });
 
     testWidgets('one shelf per library with content, "全部" opens the wall', (
@@ -925,7 +925,7 @@ void main() {
         );
       });
       expect(find.text('名称'), findsOneWidget);
-      expect(find.text('类型：喜剧'), findsOneWidget);
+      expect(find.widgetWithText(InputChip, '喜剧'), findsOneWidget);
       expect(find.text('疯狂的外星人'), findsOneWidget);
     });
 
@@ -2453,7 +2453,7 @@ void main() {
         await tester.tap(find.byTooltip('清除'));
         await tester.pumpAndSettle();
         expect(location(router), '/search');
-        expect(find.text('搜索影片和剧集'), findsOneWidget);
+        expect(find.text('最近搜索'), findsOneWidget);
       },
     );
 
@@ -3060,7 +3060,7 @@ void main() {
       );
       expect(find.text('周末'), findsOneWidget);
       expect(find.text('第 1 季 第 1 集 · 科学边界'), findsOneWidget);
-      expect(find.text('2 项 · 拖动可调整顺序'), findsOneWidget);
+      expect(find.text('2 项'), findsOneWidget);
 
       await tester.tap(find.byTooltip('管理 流浪地球'));
       await tester.pumpAndSettle();

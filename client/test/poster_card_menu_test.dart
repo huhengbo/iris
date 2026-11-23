@@ -10,6 +10,7 @@ import 'package:iris/app/tv.dart';
 import 'package:iris/core/providers.dart';
 import 'package:iris/features/auth/auth_controller.dart';
 import 'package:iris/features/detail/detail_page.dart';
+import 'package:iris/features/library/art_image.dart';
 import 'package:iris/features/library/browse_api.dart';
 import 'package:iris/features/library/poster_card.dart';
 
@@ -353,5 +354,33 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text(_longTitle), findsOneWidget);
     expect(find.text(_subtitle), findsOneWidget);
+  });
+
+  testWidgets('hovering overlay buttons keeps the frame lifted and aligned', (
+    tester,
+  ) async {
+    await _pumpCard(tester);
+    final mouse = await _hover(tester);
+
+    final playRectBefore = tester.getRect(find.byKey(play));
+    final frameContainer = find
+        .descendant(
+          of: find.byType(ArtFrame),
+          matching: find.byType(AnimatedContainer),
+        )
+        .first;
+    expect(
+      tester.widget<AnimatedContainer>(frameContainer).transform,
+      Matrix4.translationValues(0, -4, 0),
+    );
+
+    await mouse.moveTo(playRectBefore.center);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<AnimatedContainer>(frameContainer).transform,
+      Matrix4.translationValues(0, -4, 0),
+    );
+    expect(tester.getRect(find.byKey(play)), playRectBefore);
   });
 }

@@ -5,6 +5,7 @@ import 'package:iris/app/theme.dart';
 import 'package:iris/app/tv.dart';
 import 'package:iris/features/library/browse_api.dart';
 import 'package:iris/features/tv/tv_home_page.dart';
+import 'package:iris/features/tv/tv_widgets.dart';
 import 'package:iris/main.dart';
 
 /// 电视首页：行顺序与手机一致，精选轮播不再出现，默认焦点在第一行第一张卡。
@@ -202,5 +203,40 @@ void main() {
     expect(find.text('稍后观看'), findsNothing);
     expect(find.text('继续观看'), findsOneWidget);
     expect(find.text('最近添加的电影'), findsOneWidget);
+  });
+
+  testWidgets('spotlight keeps title steady when overview loads and gives '
+      'cards unique hero tags', (tester) async {
+    await pumpHome(
+      tester,
+      homeFeed(
+        recent: [play(1, '三体')],
+        watchlist: [card(1, '三体', kind: 'series')],
+      ),
+    );
+
+    final spotTitle = find.byWidgetPredicate(
+      (w) =>
+          w is Text && w.data == '三体' && w.style?.fontWeight == FontWeight.w700,
+    );
+    final dyBefore = tester.getTopLeft(spotTitle).dy;
+
+    // 焦点停稳 400ms 后加载简介，片名位置保持不变
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(find.text('简介'), findsOneWidget);
+    expect(tester.getTopLeft(spotTitle).dy, dyBefore);
+
+    // 同一条目出现在多个片架时 Hero tag 互不重复，且首张卡片左侧留白足以容纳焦点环
+    final heroTags = [
+      for (final hero in tester.widgetList<Hero>(find.byType(Hero))) hero.tag,
+    ];
+    expect(heroTags.length, greaterThanOrEqualTo(2));
+    expect(heroTags.toSet().length, heroTags.length);
+
+    final shelfLeft = tester.getTopLeft(find.byType(TvShelf).first).dx;
+    final cardLeft = tester.getTopLeft(find.byType(TvStill).first).dx;
+    expect(cardLeft - shelfLeft, greaterThanOrEqualTo(14));
   });
 }

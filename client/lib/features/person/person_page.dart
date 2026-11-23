@@ -94,7 +94,6 @@ class PersonPage extends ConsumerWidget {
             empty: const EmptyState(
               icon: Icons.movie_filter_outlined,
               title: '资料库里还没有这个人的作品',
-              message: '可能在你没有权限的资料库里',
             ),
           ),
         ],

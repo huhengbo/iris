@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/launch_splash.dart';
 import '../../app/motion.dart';
-import '../../app/theme.dart';
 import '../../core/api/api_error.dart';
 import '../../core/widgets/form_error_text.dart';
 import '../../core/servers.dart';
@@ -88,14 +87,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         textAlign: TextAlign.center,
                         style: theme.textTheme.headlineMedium,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '家里的片库，点开就看',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium!.copyWith(
-                          color: CinemaColors.text2,
-                        ),
-                      ),
                       const SizedBox(height: 32),
                       TextFormField(
                         controller: _username,
@@ -139,16 +130,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               : const Text('登录'),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '账号由管理员创建，如需开通请联系管理员',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall,
-                      ),
                       // 本机记住了其他账号时，可以直接切过去不用输密码
                       if (ref.watch(savedAccountsProvider).value?.isNotEmpty ??
                           false) ...[
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 16),
                         TextButton(
                           onPressed: _submitting
                               ? null

@@ -84,6 +84,12 @@ class _Episodes extends ConsumerWidget {
           ),
         ),
       ),
+      _ when wide => SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(top: CinemaSpacing.heading),
+          child: _EpisodeRailSkeleton(padding: padding),
+        ),
+      ),
       _ => SliverPadding(
         padding: listPadding,
         sliver: SliverList.builder(
@@ -93,6 +99,18 @@ class _Episodes extends ConsumerWidget {
       ),
     };
   }
+}
+
+double _episodeRailHeight(BuildContext context) {
+  const cardWidth = 300.0;
+  final scaler = MediaQuery.textScalerOf(context);
+  // 剧照 + 8 + 片名行（和 40 的图标按钮取高）+ 状态行 + 两行简介，按系统字号算，放大字号不溢出
+  return cardWidth * 9 / 16 +
+      8 +
+      math.max(scaler.scale(22), 40) +
+      scaler.scale(18) +
+      scaler.scale(17) * 2 +
+      8;
 }
 
 /// 宽屏的分集片架：16:9 剧照 + 「N. 片名」+ 时长 / 版本数 + 两行简介，行尾是已看切换和管理员菜单。
@@ -141,17 +159,8 @@ class _EpisodeRailState extends State<_EpisodeRail> {
 
   @override
   Widget build(BuildContext context) {
-    final scaler = MediaQuery.textScalerOf(context);
-    // 剧照 + 8 + 片名行（和 40 的图标按钮取高）+ 状态行 + 两行简介，按系统字号算，放大字号不溢出
-    final height =
-        _cardWidth * 9 / 16 +
-        8 +
-        math.max(scaler.scale(22), 40) +
-        scaler.scale(18) +
-        scaler.scale(17) * 2 +
-        8;
     return SizedBox(
-      height: height,
+      height: _episodeRailHeight(context),
       child: RailScroller(
         controller: _controller,
         builder: (context, controller) => ListView.separated(
@@ -310,7 +319,7 @@ class _EpisodeCard extends StatelessWidget {
   }
 }
 
-class _EpisodeRow extends ConsumerStatefulWidget {
+class _EpisodeRow extends StatelessWidget {
   const _EpisodeRow({
     required this.itemId,
     required this.seasonId,
@@ -326,20 +335,8 @@ class _EpisodeRow extends ConsumerStatefulWidget {
   final VoidCallback onTap;
 
   @override
-  ConsumerState<_EpisodeRow> createState() => _EpisodeRowState();
-}
-
-class _EpisodeRowState extends ConsumerState<_EpisodeRow> {
-  bool _focused = false;
-
-  @override
   Widget build(BuildContext context) {
-    final episode = widget.episode;
     final textTheme = Theme.of(context).textTheme;
-    // 和海报卡一样，琥珀环只在键盘 / 遥控器操作时出现，触屏点按不显示
-    final ring =
-        _focused &&
-        FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
     final progress = episode.progress;
     final status = [
       if (progress != null)
@@ -355,99 +352,96 @@ class _EpisodeRowState extends ConsumerState<_EpisodeRow> {
         : '${episode.number}. $title';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Material(
-        color: widget.watching ? CinemaColors.surface1 : Colors.transparent,
-        shape: RoundedRectangleBorder(
+      child: FocusRing(
+        radius: CinemaRadius.card,
+        child: Material(
+          color: watching ? CinemaColors.surface1 : Colors.transparent,
           borderRadius: BorderRadius.circular(CinemaRadius.card),
-          side: ring
-              ? const BorderSide(color: CinemaColors.amber, width: 2)
-              : BorderSide.none,
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(CinemaRadius.card),
-          onTap: widget.onTap,
-          onFocusChange: (v) => setState(() => _focused = v),
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 112,
-                  height: 63,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(CinemaRadius.card),
-                    child: Stack(
-                      fit: StackFit.expand,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(CinemaRadius.card),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 112,
+                    height: 63,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(CinemaRadius.card),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          ArtImage(art: episode.still),
+                          if (progress != null)
+                            Positioned(
+                              left: 6,
+                              right: 6,
+                              bottom: 6,
+                              child: ProgressLine(value: progress.fraction),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ArtImage(art: episode.still),
-                        if (progress != null)
-                          Positioned(
-                            left: 6,
-                            right: 6,
-                            bottom: 6,
-                            child: ProgressLine(value: progress.fraction),
+                        Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodyMedium!.copyWith(
+                            // 看过的集退后一层
+                            color: episode.watched
+                                ? CinemaColors.text2
+                                : CinemaColors.text1,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (watching || status.isNotEmpty)
+                          Text.rich(
+                            TextSpan(
+                              children: [
+                                if (watching)
+                                  const TextSpan(
+                                    text: '正在看',
+                                    style: TextStyle(
+                                      color: CinemaColors.amber,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                if (watching && status.isNotEmpty)
+                                  const TextSpan(text: ' · '),
+                                TextSpan(text: status),
+                              ],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: textTheme.bodySmall,
+                          ),
+                        if (episode.overview != null)
+                          Text(
+                            episode.overview!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: textTheme.labelSmall!.copyWith(
+                              color: CinemaColors.text2,
+                            ),
                           ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.bodyMedium!.copyWith(
-                          // 看过的集退后一层
-                          color: episode.watched
-                              ? CinemaColors.text2
-                              : CinemaColors.text1,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (widget.watching || status.isNotEmpty)
-                        Text.rich(
-                          TextSpan(
-                            children: [
-                              if (widget.watching)
-                                const TextSpan(
-                                  text: '正在看',
-                                  style: TextStyle(
-                                    color: CinemaColors.amber,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              if (widget.watching && status.isNotEmpty)
-                                const TextSpan(text: ' · '),
-                              TextSpan(text: status),
-                            ],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.bodySmall,
-                        ),
-                      if (episode.overview != null)
-                        Text(
-                          episode.overview!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.labelSmall!.copyWith(
-                            color: CinemaColors.text2,
-                          ),
-                        ),
-                    ],
+                  const SizedBox(width: 4),
+                  _EpisodeActions(
+                    itemId: itemId,
+                    seasonId: seasonId,
+                    episode: episode,
                   ),
-                ),
-                const SizedBox(width: 4),
-                _EpisodeActions(
-                  itemId: widget.itemId,
-                  seasonId: widget.seasonId,
-                  episode: episode,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -555,6 +549,64 @@ class _EpisodeActionsState extends ConsumerState<_EpisodeActions> {
             ],
           ),
       ],
+    );
+  }
+}
+
+class _EpisodeRailSkeleton extends StatelessWidget {
+  const _EpisodeRailSkeleton({required this.padding});
+
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _episodeRailHeight(context),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.only(left: padding.left, right: padding.right),
+        itemCount: 4,
+        separatorBuilder: (_, _) =>
+            const SizedBox(width: CinemaSpacing.heading + 4),
+        itemBuilder: (_, _) => Semantics(
+          label: '正在加载',
+          child: SizedBox(
+            width: 300,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Skeleton(
+                    borderRadius: BorderRadius.circular(CinemaRadius.card),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FractionallySizedBox(
+                  widthFactor: 0.65,
+                  child: SizedBox(
+                    height: 14,
+                    child: Skeleton(
+                      borderRadius: BorderRadius.circular(CinemaRadius.tiny),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                FractionallySizedBox(
+                  widthFactor: 0.35,
+                  child: SizedBox(
+                    height: 12,
+                    child: Skeleton(
+                      borderRadius: BorderRadius.circular(CinemaRadius.tiny),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

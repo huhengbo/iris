@@ -13,6 +13,7 @@ class FocusTile extends StatefulWidget {
     required this.builder,
     this.focusScale = 1.08,
     this.autofocus = false,
+    this.hovered = false,
     this.onLongPress,
   });
 
@@ -20,6 +21,7 @@ class FocusTile extends StatefulWidget {
   final String semanticLabel;
   final double focusScale;
   final bool autofocus;
+  final bool hovered;
   final VoidCallback? onLongPress;
   final Widget Function(BuildContext context, TileHighlight highlight) builder;
 
@@ -78,7 +80,10 @@ class _FocusTileState extends State<FocusTile> {
               curve: Motion.emphasized,
               child: widget.builder(
                 context,
-                TileHighlight(focused: _focused, hovered: _hovered),
+                TileHighlight(
+                  focused: _focused,
+                  hovered: _hovered || widget.hovered,
+                ),
               ),
             ),
           ),

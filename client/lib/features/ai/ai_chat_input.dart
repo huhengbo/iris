@@ -65,7 +65,7 @@ class _AiChatInputState extends State<AiChatInput> {
                   LengthLimitingTextInputFormatter(aiMaxQuestionLength),
                 ],
                 decoration: const InputDecoration(
-                  hintText: '问点什么，例如「最近有什么高分科幻片」',
+                  hintText: '问点什么',
                   counterText: '',
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 16,

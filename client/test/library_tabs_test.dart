@@ -283,5 +283,67 @@ void main() {
       expect(find.text('漫威电影宇宙'), findsOneWidget);
       expect(find.text('3 部'), findsOneWidget);
     });
+
+    testWidgets('list view uses a check icon instead of watched text', (
+      tester,
+    ) async {
+      await pumpLibrary(tester, '/library/1?tab=library', (api) {
+        api
+          ..on('GET /api/libraries/1', library())
+          ..on(
+            itemsRoute(),
+            page([
+              card(10, '流浪地球', year: 2019, watched: true),
+              card(11, '星际穿越', year: 2014, watched: false),
+            ]),
+          );
+      });
+      await tester.tap(find.byTooltip('列表视图'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('流浪地球'), findsOneWidget);
+      expect(find.text('星际穿越'), findsOneWidget);
+      expect(find.byTooltip('已看'), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsOneWidget);
+      expect(find.text('已看'), findsNothing);
+      expect(find.text('未看'), findsNothing);
+    });
+
+    testWidgets('admin can toggle selection mode from the library toolbar', (
+      tester,
+    ) async {
+      await pumpLibrary(tester, '/library/1?tab=library', (api) {
+        api
+          ..on('GET /api/libraries/1', library())
+          ..on(itemsRoute(), page([card(10, '流浪地球', year: 2019)]));
+      }, admin: true);
+
+      expect(find.byTooltip('选择条目'), findsOneWidget);
+      await tester.tap(find.byTooltip('选择条目'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('已选 0 项'), findsOneWidget);
+      expect(find.byTooltip('批量操作'), findsOneWidget);
+
+      await tester.tap(find.text('流浪地球'));
+      await tester.pump();
+      expect(find.text('已选 1 项'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('退出选择').first);
+      await tester.pumpAndSettle();
+      expect(find.text('已选 1 项'), findsNothing);
+    });
+
+    testWidgets('regular users do not see selection mode toggle in toolbar', (
+      tester,
+    ) async {
+      await pumpLibrary(tester, '/library/1?tab=library', (api) {
+        api
+          ..on('GET /api/libraries/1', library())
+          ..on(itemsRoute(), page([card(10, '流浪地球', year: 2019)]));
+      });
+
+      expect(find.byTooltip('选择条目'), findsNothing);
+    });
   });
 }

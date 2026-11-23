@@ -59,6 +59,13 @@ class _EpisodeDetailPageState extends ConsumerState<EpisodeDetailPage> {
   /// 为空时按默认字幕语言自动选
   int? _subtitleId;
   bool _busy = false;
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   void _retry() => ref
     ..invalidate(mediaDetailProvider(widget.itemId))
@@ -68,13 +75,23 @@ class _EpisodeDetailPageState extends ConsumerState<EpisodeDetailPage> {
   Widget build(BuildContext context) {
     final detail = ref.watch(mediaDetailProvider(widget.itemId));
     final season = ref.watch(seasonProvider(widget.seasonId));
+    String? barTitle;
+    if (season.value case final seasonValue?) {
+      final ep = seasonValue.episodes
+          .where((e) => e.id == widget.episodeId)
+          .firstOrNull;
+      if (ep != null) {
+        final name = ep.name;
+        barTitle = name == null || name.isEmpty ? '第 ${ep.number} 集' : name;
+      }
+    }
     return Scaffold(
-      body: Stack(
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth;
-              return switch ((detail, season)) {
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          return Stack(
+            children: [
+              switch ((detail, season)) {
                 (
                   AsyncData(value: final media),
                   AsyncData(value: final season),
@@ -91,11 +108,15 @@ class _EpisodeDetailPageState extends ConsumerState<EpisodeDetailPage> {
                 ),
                 // 和剧集详情一样：剧照和正文都是骨架
                 _ => _placeholder(width, child: const DetailBodySkeleton()),
-              };
-            },
-          ),
-          const DetailBackButton(),
-        ],
+              },
+              DetailTopBar(
+                controller: _scroll,
+                title: barTitle,
+                revealOffset: detailArtHeight(width) * 0.58,
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -107,6 +128,7 @@ class _EpisodeDetailPageState extends ConsumerState<EpisodeDetailPage> {
     required Widget child,
   }) {
     return CustomScrollView(
+      controller: _scroll,
       slivers: [
         SliverToBoxAdapter(
           child: DetailHeader(
@@ -141,6 +163,7 @@ class _EpisodeDetailPageState extends ConsumerState<EpisodeDetailPage> {
     final still = episode.still;
     final backdrop = media.card.backdrop;
     return CustomScrollView(
+      controller: _scroll,
       slivers: [
         SliverToBoxAdapter(
           child: DetailHeader(

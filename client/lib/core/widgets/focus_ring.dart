@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/motion.dart';
 import '../../app/theme.dart';
 
 /// 子组件里有焦点时描一圈 2px 琥珀环，给 ListTile、InkWell、Chip 这类
@@ -51,9 +52,10 @@ class _FocusRingState extends State<FocusRing> {
       },
       // 装饰层常驻，只换边框颜色：按聚焦与否增删一层会改变树深度，
       // 子树（ListTile、InkWell）随之重建，焦点被首项 autofocus 抢回。
-      child: DecoratedBox(
-        position: DecorationPosition.foreground,
-        decoration: BoxDecoration(
+      child: AnimatedContainer(
+        duration: Motion.reduced(context) ? Duration.zero : Motion.focus,
+        curve: Motion.emphasized,
+        foregroundDecoration: BoxDecoration(
           border: Border.all(
             color: ring ? CinemaColors.amber : Colors.transparent,
             width: 2,

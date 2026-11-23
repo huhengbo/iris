@@ -13,6 +13,7 @@ Future<({FocusNode play, FocusNode seek})> pumpControls(
   bool visible = true,
   bool castable = false,
   bool playing = true,
+  Duration buffer = Duration.zero,
   ValueChanged<Duration>? onSeekBy,
   ValueChanged<Duration>? onScrubBy,
   VoidCallback? onTogglePlay,
@@ -40,6 +41,7 @@ Future<({FocusNode play, FocusNode seek})> pumpControls(
           title: '三体 · 第 1 季 第 2 集',
           position: const Duration(minutes: 1),
           duration: const Duration(minutes: 45),
+          buffer: buffer,
           playing: playing,
           castable: castable,
           rate: 1,
@@ -374,5 +376,141 @@ void main() {
     expect(find.text('1.5×'), findsOneWidget);
     expect(find.text('国语'), findsNothing);
     expect(find.text('填满屏幕'), findsNothing);
+  });
+
+  testWidgets('竖屏窄宽时剧集底栏折行且按钮互不重叠', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await pumpControls(
+      tester,
+      episodic: true,
+      onPrevious: () {},
+      onNext: () {},
+      onEpisodes: () {},
+    );
+    await tester.pump();
+
+    const tooltips = [
+      '播放速度',
+      '上一集',
+      '后退 10 秒',
+      '暂停',
+      '前进 10 秒',
+      '下一集',
+      '音轨',
+      '字幕',
+      '选集',
+    ];
+    final rects = [
+      for (final tip in tooltips) tester.getRect(find.byTooltip(tip)),
+    ];
+    for (var i = 0; i < rects.length; i++) {
+      expect(rects[i].left, greaterThanOrEqualTo(0), reason: tooltips[i]);
+      expect(rects[i].right, lessThanOrEqualTo(360), reason: tooltips[i]);
+      for (var j = i + 1; j < rects.length; j++) {
+        expect(
+          rects[i].overlaps(rects[j]),
+          isFalse,
+          reason: '${tooltips[i]} 与 ${tooltips[j]} 重叠',
+        );
+      }
+    }
+  });
+
+  testWidgets('进度条在触屏与电视模式下均展示已缓冲进度', (tester) async {
+    await pumpControls(tester, buffer: const Duration(minutes: 15));
+    final slider = tester.widget<Slider>(find.byType(Slider));
+    expect(
+      slider.secondaryTrackValue,
+      const Duration(minutes: 15).inMilliseconds.toDouble(),
+    );
+
+    await pumpControls(tester, tv: true, buffer: const Duration(minutes: 15));
+    final expectedColor = CinemaColors.text0.withValues(alpha: .45);
+    final bufferTrack = find.byWidgetPredicate((widget) {
+      if (widget is! AnimatedContainer) return false;
+      final decoration = widget.decoration;
+      return decoration is BoxDecoration && decoration.color == expectedColor;
+    });
+    expect(bufferTrack, findsOneWidget);
+  });
+
+  testWidgets('侧边悬浮按钮带 scrim 圆底，且运行时锁屏切换拦截其他控件', (tester) async {
+    final playFocus = FocusNode(debugLabel: 'player.play');
+    final seekFocus = FocusNode(debugLabel: 'player.seek');
+    final locked = ValueNotifier(false);
+    addTearDown(playFocus.dispose);
+    addTearDown(seekFocus.dispose);
+    addTearDown(locked.dispose);
+    var toggles = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(),
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: locked,
+            builder: (context, isLocked, _) => PlayerControls(
+              tv: false,
+              visible: true,
+              title: '三体 · 第 1 季 第 2 集',
+              position: const Duration(minutes: 1),
+              duration: const Duration(minutes: 45),
+              playing: true,
+              castable: false,
+              rate: 1,
+              fill: false,
+              locked: isLocked,
+              playFocus: playFocus,
+              seekFocus: seekFocus,
+              onClose: () {},
+              onCast: () {},
+              onTogglePlay: () => toggles++,
+              onSeekBy: (_) {},
+              onScrubBy: (_) {},
+              onOpenSettings: () {},
+              onScrubStart: () {},
+              onScrub: (_) {},
+              onScrubEnd: () {},
+              onRate: () {},
+              onAudio: () {},
+              onSubtitles: () {},
+              onRotate: () {},
+              onToggleFill: () {},
+              onToggleLock: () => locked.value = !locked.value,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    for (final tip in const ['旋转屏幕', '画面填满屏幕', '锁屏']) {
+      final container = tester.widget<AnimatedContainer>(
+        find.descendant(
+          of: find.byTooltip(tip),
+          matching: find.byType(AnimatedContainer),
+        ),
+      );
+      expect(
+        (container.decoration! as BoxDecoration).color,
+        CinemaColors.scrim,
+      );
+    }
+
+    await tester.tap(find.byTooltip('锁屏'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('暂停'), warnIfMissed: false);
+    await tester.pump();
+    expect(toggles, 0);
+
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('暂停'), findsNothing);
+    expect(find.byTooltip('解锁'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('解锁'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('暂停'), findsOneWidget);
   });
 }

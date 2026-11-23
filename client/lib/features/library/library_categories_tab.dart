@@ -23,11 +23,7 @@ class LibraryCategoriesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final categories = detail.categories;
     if (categories.isEmpty) {
-      return const EmptyState(
-        icon: Icons.category_outlined,
-        title: '还没有分类',
-        message: '条目带上类型后，会按类型出现在这里',
-      );
+      return const EmptyState(icon: Icons.category_outlined, title: '还没有分类');
     }
     final wide = MediaQuery.sizeOf(context).width >= wideLayoutBreakpoint;
     final gutter = CinemaSpacing.gutterFor(wide: wide);

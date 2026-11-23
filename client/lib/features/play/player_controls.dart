@@ -60,6 +60,7 @@ class PlayerControls extends StatelessWidget {
     required this.onSubtitles,
     this.locked = false,
     this.episodic = false,
+    this.buffer = Duration.zero,
     this.onPrevious,
     this.onNext,
     this.onEpisodes,
@@ -75,6 +76,7 @@ class PlayerControls extends StatelessWidget {
   final String title;
   final Duration position;
   final Duration duration;
+  final Duration buffer;
   final bool playing;
 
   /// 当前平台能把播放地址交给电视时才显示投屏按钮
@@ -129,6 +131,7 @@ class PlayerControls extends StatelessWidget {
               padding: EdgeInsets.only(right: 16 + safe.right),
               child: _ControlButton(
                 tv: tv,
+                scrim: true,
                 icon: locked ? Icons.lock_rounded : Icons.lock_open_rounded,
                 tooltip: locked ? '解锁' : '锁屏',
                 onPressed: onToggleLock,
@@ -140,93 +143,112 @@ class PlayerControls extends StatelessWidget {
       child: AnimatedOpacity(
         opacity: visible ? 1 : 0,
         duration: Motion.short,
+        curve: Motion.emphasized,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (!locked) ...[
-              Align(
-                alignment: Alignment.topCenter,
-                child: _Scrim(
-                  top: true,
-                  tv: tv,
-                  child: _TopBar(
-                    tv: tv,
-                    title: title,
-                    castable: castable,
-                    onClose: onClose,
-                    onCast: onCast,
-                    onOpenSettings: onOpenSettings,
-                  ),
-                ),
-              ),
-              if (onRotate != null || onToggleFill != null)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: EdgeInsets.only(left: 16 + safe.left),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (onRotate case final rotate?)
-                          _ControlButton(
-                            tv: tv,
-                            icon: Icons.screen_rotation_rounded,
-                            tooltip: '旋转屏幕',
-                            onPressed: rotate,
+            IgnorePointer(
+              ignoring: locked,
+              child: AnimatedSwitcher(
+                duration: Motion.short,
+                switchInCurve: Motion.emphasized,
+                switchOutCurve: Motion.emphasized,
+                child: locked
+                    ? const SizedBox.shrink(key: ValueKey('locked'))
+                    : Stack(
+                        key: const ValueKey('unlocked'),
+                        fit: StackFit.expand,
+                        children: [
+                          Align(
+                            alignment: Alignment.topCenter,
+                            child: _Scrim(
+                              top: true,
+                              tv: tv,
+                              child: _TopBar(
+                                tv: tv,
+                                title: title,
+                                castable: castable,
+                                onClose: onClose,
+                                onCast: onCast,
+                                onOpenSettings: onOpenSettings,
+                              ),
+                            ),
                           ),
-                        if (onRotate != null && onToggleFill != null)
-                          const SizedBox(height: 32),
-                        if (onToggleFill case final toggle?)
-                          _ControlButton(
-                            tv: tv,
-                            icon: fill
-                                ? Icons.fullscreen_exit_rounded
-                                : Icons.fullscreen_rounded,
-                            tooltip: fill ? '显示完整画面' : '画面填满屏幕',
-                            onPressed: toggle,
+                          if (onRotate != null || onToggleFill != null)
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Padding(
+                                padding: EdgeInsets.only(left: 16 + safe.left),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (onRotate case final rotate?)
+                                      _ControlButton(
+                                        tv: tv,
+                                        scrim: true,
+                                        icon: Icons.screen_rotation_rounded,
+                                        tooltip: '旋转屏幕',
+                                        onPressed: rotate,
+                                      ),
+                                    if (onRotate != null &&
+                                        onToggleFill != null)
+                                      const SizedBox(height: 32),
+                                    if (onToggleFill case final toggle?)
+                                      _ControlButton(
+                                        tv: tv,
+                                        scrim: true,
+                                        icon: fill
+                                            ? Icons.fullscreen_exit_rounded
+                                            : Icons.fullscreen_rounded,
+                                        tooltip: fill ? '显示完整画面' : '画面填满屏幕',
+                                        onPressed: toggle,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          Align(
+                            alignment: Alignment.bottomCenter,
+                            child: _Scrim(
+                              top: false,
+                              tv: tv,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _SeekRow(
+                                    tv: tv,
+                                    position: position,
+                                    duration: duration,
+                                    buffer: buffer,
+                                    seekFocus: seekFocus,
+                                    onScrubBy: onScrubBy,
+                                    onScrubStart: onScrubStart,
+                                    onScrub: onScrub,
+                                    onScrubEnd: onScrubEnd,
+                                  ),
+                                  _BottomButtons(
+                                    tv: tv,
+                                    playing: playing,
+                                    rate: rate,
+                                    episodic: episodic,
+                                    playFocus: playFocus,
+                                    onTogglePlay: onTogglePlay,
+                                    onSeekBy: onSeekBy,
+                                    onRate: onRate,
+                                    onAudio: onAudio,
+                                    onSubtitles: onSubtitles,
+                                    onPrevious: onPrevious,
+                                    onNext: onNext,
+                                    onEpisodes: onEpisodes,
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                      ],
-                    ),
-                  ),
-                ),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: _Scrim(
-                  top: false,
-                  tv: tv,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _SeekRow(
-                        tv: tv,
-                        position: position,
-                        duration: duration,
-                        seekFocus: seekFocus,
-                        onScrubBy: onScrubBy,
-                        onScrubStart: onScrubStart,
-                        onScrub: onScrub,
-                        onScrubEnd: onScrubEnd,
+                        ],
                       ),
-                      _BottomButtons(
-                        tv: tv,
-                        playing: playing,
-                        rate: rate,
-                        episodic: episodic,
-                        playFocus: playFocus,
-                        onTogglePlay: onTogglePlay,
-                        onSeekBy: onSeekBy,
-                        onRate: onRate,
-                        onAudio: onAudio,
-                        onSubtitles: onSubtitles,
-                        onPrevious: onPrevious,
-                        onNext: onNext,
-                        onEpisodes: onEpisodes,
-                      ),
-                    ],
-                  ),
-                ),
               ),
-            ],
+            ),
             ?lock,
           ],
         ),
@@ -257,13 +279,15 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final iconSize = tv ? 30.0 : 24.0;
     return Row(
       children: [
-        IconButton(
+        _ControlButton(
+          tv: tv,
+          icon: Icons.arrow_back_ios_new_rounded,
+          iconSize: iconSize,
           tooltip: '返回',
-          iconSize: tv ? 32 : 24,
           onPressed: onClose,
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
         ),
         const SizedBox(width: 4),
         Expanded(
@@ -276,25 +300,26 @@ class _TopBar extends StatelessWidget {
           ),
         ),
         if (castable)
-          IconButton(
+          _ControlButton(
+            tv: tv,
+            icon: Icons.cast_rounded,
+            iconSize: iconSize,
             tooltip: '投屏到电视',
-            iconSize: tv ? 32 : 24,
             onPressed: onCast,
-            icon: const Icon(Icons.cast_rounded),
           ),
-        IconButton(
+        _ControlButton(
+          tv: tv,
+          icon: Icons.settings_rounded,
+          iconSize: iconSize,
           tooltip: '播放设置',
-          iconSize: tv ? 32 : 24,
           onPressed: onOpenSettings,
-          icon: const Icon(Icons.settings_rounded),
         ),
       ],
     );
   }
 }
 
-/// 底栏按钮行：左边倍速，正中上一集 / 后退 / 播放暂停 / 前进 / 下一集，
-/// 右边音轨、字幕、选集。正中一组按屏幕居中，不随两边的宽度偏移。
+/// 底栏按钮行：宽屏和横屏时正中一组按屏幕居中，窄屏或竖屏自动折为两行避免重叠。
 class _BottomButtons extends StatelessWidget {
   const _BottomButtons({
     required this.tv,
@@ -328,103 +353,149 @@ class _BottomButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final gap = SizedBox(width: tv ? 20 : 12);
-    // 撑满宽度：外层 Column 给的是松约束，不撑满的话两侧按钮会叠到正中一组上
-    return SizedBox(
-      width: double.infinity,
-      height: tv ? 80 : 64,
-      child: Stack(
-        alignment: Alignment.center,
+    final rateButton = _ControlButton(
+      tv: tv,
+      label: '${_rateLabel(rate)}x',
+      tooltip: '播放速度',
+      onPressed: onRate,
+    );
+    Widget transportRow(double gapWidth) {
+      final gap = SizedBox(width: gapWidth);
+      return Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: _ControlButton(
+          if (episodic) ...[
+            _ControlButton(
               tv: tv,
-              label: '${_rateLabel(rate)}x',
-              tooltip: '播放速度',
-              onPressed: onRate,
+              icon: Icons.skip_previous_rounded,
+              tooltip: '上一集',
+              onPressed: onPrevious,
             ),
+            gap,
+          ],
+          _ControlButton(
+            tv: tv,
+            icon: Icons.replay_10_rounded,
+            tooltip: '后退 10 秒',
+            onPressed: () => onSeekBy(-seekBackStep),
           ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (episodic) ...[
-                _ControlButton(
-                  tv: tv,
-                  icon: Icons.skip_previous_rounded,
-                  tooltip: '上一集',
-                  onPressed: onPrevious,
-                ),
-                gap,
-              ],
-              _ControlButton(
-                tv: tv,
-                icon: Icons.replay_10_rounded,
-                tooltip: '后退 10 秒',
-                onPressed: () => onSeekBy(-seekBackStep),
-              ),
-              gap,
-              _ControlButton(
-                tv: tv,
-                primary: true,
-                focusNode: playFocus,
-                icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                tooltip: playing ? '暂停' : '播放',
-                onPressed: onTogglePlay,
-              ),
-              gap,
-              _ControlButton(
-                tv: tv,
-                icon: Icons.forward_10_rounded,
-                tooltip: '前进 10 秒',
-                onPressed: () => onSeekBy(seekForwardStep),
-              ),
-              if (episodic) ...[
-                gap,
-                _ControlButton(
-                  tv: tv,
-                  icon: Icons.skip_next_rounded,
-                  tooltip: '下一集',
-                  onPressed: onNext,
-                ),
-              ],
-            ],
+          gap,
+          _ControlButton(
+            tv: tv,
+            primary: true,
+            focusNode: playFocus,
+            icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            tooltip: playing ? '暂停' : '播放',
+            onPressed: onTogglePlay,
           ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _ControlButton(
-                  tv: tv,
-                  icon: Icons.graphic_eq_rounded,
-                  tooltip: '音轨',
-                  onPressed: onAudio,
-                ),
-                _ControlButton(
-                  tv: tv,
-                  icon: Icons.subtitles_outlined,
-                  tooltip: '字幕',
-                  onPressed: onSubtitles,
-                ),
-                if (onEpisodes case final episodes?)
-                  _ControlButton(
-                    tv: tv,
-                    icon: Icons.playlist_play_rounded,
-                    tooltip: '选集',
-                    onPressed: episodes,
-                  ),
-              ],
+          gap,
+          _ControlButton(
+            tv: tv,
+            icon: Icons.forward_10_rounded,
+            tooltip: '前进 10 秒',
+            onPressed: () => onSeekBy(seekForwardStep),
+          ),
+          if (episodic) ...[
+            gap,
+            _ControlButton(
+              tv: tv,
+              icon: Icons.skip_next_rounded,
+              tooltip: '下一集',
+              onPressed: onNext,
             ),
-          ),
+          ],
         ],
-      ),
+      );
+    }
+
+    final utilityRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ControlButton(
+          tv: tv,
+          icon: Icons.graphic_eq_rounded,
+          tooltip: '音轨',
+          onPressed: onAudio,
+        ),
+        _ControlButton(
+          tv: tv,
+          icon: Icons.subtitles_outlined,
+          tooltip: '字幕',
+          onPressed: onSubtitles,
+        ),
+        if (onEpisodes case final episodes?)
+          _ControlButton(
+            tv: tv,
+            icon: Icons.playlist_play_rounded,
+            tooltip: '选集',
+            onPressed: episodes,
+          ),
+      ],
+    );
+
+    final playSize = tv ? 72.0 : 60.0;
+    final btnSize = tv ? 60.0 : 48.0;
+    final normalGap = tv ? 20.0 : 12.0;
+    final transportCount = episodic ? 5 : 3;
+    final transportWidth =
+        playSize +
+        btnSize * (transportCount - 1) +
+        normalGap * (transportCount - 1);
+    final rightCount = onEpisodes != null ? 3 : 2;
+    final rightWidth = btnSize * rightCount;
+    final leftWidth = tv ? 88.0 : 76.0;
+    final centeredMinWidth =
+        transportWidth +
+        2 * (rightWidth > leftWidth ? rightWidth : leftWidth) +
+        16;
+    final singleRowMinWidth = leftWidth + transportWidth + rightWidth + 16;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        if (tv || width >= centeredMinWidth) {
+          // 撑满宽度：外层 Column 给的是松约束，不撑满的话两侧按钮会叠到正中一组上
+          return SizedBox(
+            width: double.infinity,
+            height: tv ? 80 : 64,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Align(alignment: Alignment.centerLeft, child: rateButton),
+                transportRow(normalGap),
+                Align(alignment: Alignment.centerRight, child: utilityRow),
+              ],
+            ),
+          );
+        }
+        if (width >= singleRowMinWidth) {
+          return SizedBox(
+            width: double.infinity,
+            height: 64,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [rateButton, transportRow(normalGap), utilityRow],
+            ),
+          );
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(child: transportRow(width < 320 ? 4 : normalGap)),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [rateButton, utilityRow],
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-/// 控制层的按钮：平时只有白色图标（或倍速文字），不加底；遥控器聚焦时
-/// 衬一块琥珀圆底并略放大，隔着客厅也看得出焦点在哪；触屏点按不留焦点样式。
+/// 控制层的按钮：平时只有白色图标（或倍速文字），浮在画面两侧的可配 scrim 圆底；
+/// 遥控器聚焦时衬一块琥珀圆底并略放大，触屏与鼠标补齐按压和悬停反馈。
 /// [primary] 是播放暂停，比其他大一圈。[onPressed] 为空时变灰、不响应。
 class _ControlButton extends StatefulWidget {
   const _ControlButton({
@@ -432,13 +503,16 @@ class _ControlButton extends StatefulWidget {
     required this.tooltip,
     required this.onPressed,
     this.icon,
+    this.iconSize,
     this.label,
     this.focusNode,
     this.primary = false,
+    this.scrim = false,
   }) : assert(icon != null || label != null);
 
   final bool tv;
   final IconData? icon;
+  final double? iconSize;
 
   /// 用文字代替图标，如倍速「1.0x」
   final String? label;
@@ -446,6 +520,7 @@ class _ControlButton extends StatefulWidget {
   final VoidCallback? onPressed;
   final FocusNode? focusNode;
   final bool primary;
+  final bool scrim;
 
   @override
   State<_ControlButton> createState() => _ControlButtonState();
@@ -453,15 +528,29 @@ class _ControlButton extends StatefulWidget {
 
 class _ControlButtonState extends State<_ControlButton> {
   bool _focused = false;
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
     final onPressed = widget.onPressed;
     final enabled = onPressed != null;
+    final reduced = Motion.reduced(context);
     final size = widget.primary
         ? (widget.tv ? 72.0 : 60.0)
         : (widget.tv ? 60.0 : 48.0);
     final foreground = _focused ? CinemaColors.amberInk : CinemaColors.text0;
+    final background = _focused
+        ? CinemaColors.amber
+        : (_hovered && enabled
+              ? (widget.scrim
+                    ? Color.alphaBlend(CinemaColors.hover, CinemaColors.scrim)
+                    : CinemaColors.hover)
+              : (widget.scrim ? CinemaColors.scrim : Colors.transparent));
+    final effectiveIconSize =
+        widget.iconSize ??
+        (widget.primary
+            ? (widget.tv ? 48.0 : 44.0)
+            : (widget.tv ? 36.0 : 30.0));
     final label = widget.label;
     final Widget content = label != null
         ? Text(
@@ -475,18 +564,23 @@ class _ControlButtonState extends State<_ControlButton> {
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
           )
-        : Icon(
-            widget.icon,
-            size: widget.primary
-                ? (widget.tv ? 48 : 44)
-                : (widget.tv ? 36 : 30),
-            color: foreground,
+        : AnimatedSwitcher(
+            duration: reduced ? Duration.zero : Motion.short,
+            switchInCurve: Motion.emphasized,
+            switchOutCurve: Motion.emphasized,
+            child: Icon(
+              widget.icon,
+              key: ValueKey(widget.icon),
+              size: effectiveIconSize,
+              color: foreground,
+            ),
           );
     return FocusableActionDetector(
       focusNode: widget.focusNode,
       enabled: enabled,
       mouseCursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
       onShowFocusHighlight: (v) => setState(() => _focused = v),
+      onShowHoverHighlight: (v) => setState(() => _hovered = v),
       actions: {
         ActivateIntent: CallbackAction<ActivateIntent>(
           onInvoke: (_) {
@@ -513,24 +607,29 @@ class _ControlButtonState extends State<_ControlButton> {
             // 整块都接收点按，只按在图标附近会漏到下面的画面手势
             behavior: HitTestBehavior.opaque,
             onTap: onPressed,
-            child: Opacity(
-              opacity: enabled ? 1 : .4,
-              child: AnimatedScale(
-                scale: _focused ? 1.06 : 1,
-                duration: Motion.short,
-                // 不用 Container 的 alignment：放在 Align 里时它会撑满整行
-                child: AnimatedContainer(
-                  duration: Motion.short,
-                  width: label == null ? size : null,
-                  height: size,
-                  padding: label != null
-                      ? const EdgeInsets.symmetric(horizontal: 12)
-                      : null,
-                  decoration: BoxDecoration(
-                    color: _focused ? CinemaColors.amber : Colors.transparent,
-                    borderRadius: BorderRadius.circular(CinemaRadius.pill),
+            child: PressScale(
+              enabled: enabled,
+              child: Opacity(
+                opacity: enabled ? 1 : .4,
+                child: AnimatedScale(
+                  scale: _focused && !reduced ? 1.06 : 1,
+                  duration: reduced ? Duration.zero : Motion.focus,
+                  curve: Motion.emphasized,
+                  // 不用 Container 的 alignment：放在 Align 里时它会撑满整行
+                  child: AnimatedContainer(
+                    duration: Motion.focus,
+                    curve: Motion.emphasized,
+                    width: label == null ? size : null,
+                    height: size,
+                    padding: label != null
+                        ? const EdgeInsets.symmetric(horizontal: 12)
+                        : null,
+                    decoration: BoxDecoration(
+                      color: background,
+                      borderRadius: BorderRadius.circular(CinemaRadius.pill),
+                    ),
+                    child: Align(widthFactor: 1, child: content),
                   ),
-                  child: Align(widthFactor: 1, child: content),
                 ),
               ),
             ),
@@ -547,6 +646,7 @@ class _SeekRow extends StatelessWidget {
     required this.tv,
     required this.position,
     required this.duration,
+    required this.buffer,
     required this.seekFocus,
     required this.onScrubBy,
     required this.onScrubStart,
@@ -557,6 +657,7 @@ class _SeekRow extends StatelessWidget {
   final bool tv;
   final Duration position;
   final Duration duration;
+  final Duration buffer;
   final FocusNode seekFocus;
   final ValueChanged<Duration> onScrubBy;
   final VoidCallback onScrubStart;
@@ -566,6 +667,9 @@ class _SeekRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final max = duration.inMilliseconds.toDouble();
+    final buffered = max > 0
+        ? buffer.inMilliseconds.clamp(0, max).toDouble()
+        : 0.0;
     return Row(
       children: [
         _TimeText(formatPlayerClock(position), tv: tv),
@@ -576,6 +680,7 @@ class _SeekRow extends StatelessWidget {
                   focusNode: seekFocus,
                   position: position,
                   duration: duration,
+                  buffer: buffer,
                   onSeekBy: onScrubBy,
                 )
               // 触屏直接拖；遥控器用左右键快进快退，滑块不参与焦点移动。
@@ -587,6 +692,8 @@ class _SeekRow extends StatelessWidget {
                       data: SliderTheme.of(context).copyWith(
                         trackHeight: 3,
                         activeTrackColor: CinemaColors.amber,
+                        secondaryActiveTrackColor: CinemaColors.text0
+                            .withValues(alpha: .45),
                         inactiveTrackColor: CinemaColors.track,
                         thumbColor: CinemaColors.amber,
                         overlayColor: CinemaColors.amberSoft,
@@ -599,6 +706,9 @@ class _SeekRow extends StatelessWidget {
                         value: max > 0
                             ? position.inMilliseconds.clamp(0, max).toDouble()
                             : 0,
+                        secondaryTrackValue: max > 0 && buffered > 0
+                            ? buffered
+                            : null,
                         onChangeStart: max > 0 ? (_) => onScrubStart() : null,
                         onChanged: max > 0
                             ? (v) => onScrub(Duration(milliseconds: v.round()))
@@ -795,7 +905,6 @@ class _PlayerSettingsState extends State<_PlayerSettings> {
               child: PickerOption(
                 icon: Icons.travel_explore,
                 title: '搜索字幕',
-                subtitle: '从在线字幕下载器搜索，下载后立即切换',
                 onTap: () => unawaited(_search()),
               ),
             ),
@@ -819,8 +928,8 @@ class _PlayerSettingsState extends State<_PlayerSettings> {
           ?label(PlayerSettingsSection.picture),
           _ScrollIntoView(
             child: PickerOption(
+              icon: Icons.fit_screen_outlined,
               title: '完整显示',
-              subtitle: '比例不变，整个画面都在',
               selected: !_fill,
               autofocus: takeFocus(!_fill),
               onTap: () {
@@ -831,8 +940,8 @@ class _PlayerSettingsState extends State<_PlayerSettings> {
           ),
           _ScrollIntoView(
             child: PickerOption(
+              icon: Icons.fullscreen_rounded,
               title: '填满屏幕',
-              subtitle: '等比放大铺满屏幕，裁掉多出的边',
               selected: _fill,
               autofocus: takeFocus(_fill),
               onTap: () {

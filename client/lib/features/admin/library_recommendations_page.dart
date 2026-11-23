@@ -120,53 +120,32 @@ class _LibraryRecommendationsPageState
                 return const EmptyState(
                   icon: Icons.auto_awesome_outlined,
                   title: '没有推荐行',
-                  message: '资料库里有条目后，继续观看、最近添加和类型行会出现在这里',
                 );
               }
-              return Column(
-                children: [
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      padding.left + CinemaSpacing.gutter,
-                      12,
-                      padding.right + CinemaSpacing.gutter,
-                      4,
-                    ),
-                    child: Text(
-                      '开关决定这一行出现在首页还是「推荐」标签；从上到下就是显示顺序，保存后生效。',
-                      style: Theme.of(context).textTheme.bodySmall!
-                          .copyWith(color: CinemaColors.text2),
-                    ),
+              return ReorderableListView.builder(
+                padding: EdgeInsets.fromLTRB(
+                  padding.left + CinemaSpacing.gutter,
+                  12,
+                  padding.right + CinemaSpacing.gutter,
+                  padding.bottom,
+                ),
+                buildDefaultDragHandles: false,
+                itemCount: shown.length,
+                onReorderItem: _saving
+                    ? (_, _) {}
+                    : (from, to) => _move(shown, from, to),
+                itemBuilder: (context, index) => _HubTile(
+                  key: ValueKey(
+                    '${shown[index].kind}:${shown[index].arg ?? ''}',
                   ),
-                  Expanded(
-                    child: ReorderableListView.builder(
-                      padding: EdgeInsets.fromLTRB(
-                        padding.left + CinemaSpacing.gutter,
-                        0,
-                        padding.right + CinemaSpacing.gutter,
-                        padding.bottom,
-                      ),
-                      buildDefaultDragHandles: false,
-                      itemCount: shown.length,
-                      onReorderItem: _saving
-                          ? (_, _) {}
-                          : (from, to) => _move(shown, from, to),
-                      itemBuilder: (context, index) => _HubTile(
-                        key: ValueKey(
-                          '${shown[index].kind}:${shown[index].arg ?? ''}',
-                        ),
-                        hub: shown[index],
-                        index: index,
-                        count: shown.length,
-                        enabled: !_saving,
-                        onHome: (value) => _toggle(shown, index, home: value),
-                        onLibrary: (value) =>
-                            _toggle(shown, index, library: value),
-                        onMove: (to) => _move(shown, index, to),
-                      ),
-                    ),
-                  ),
-                ],
+                  hub: shown[index],
+                  index: index,
+                  count: shown.length,
+                  enabled: !_saving,
+                  onHome: (value) => _toggle(shown, index, home: value),
+                  onLibrary: (value) => _toggle(shown, index, library: value),
+                  onMove: (to) => _move(shown, index, to),
+                ),
               );
             },
           ),

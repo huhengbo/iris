@@ -33,7 +33,6 @@ class LibraryRecommendTab extends ConsumerWidget {
           return const EmptyState(
             icon: Icons.auto_awesome_outlined,
             title: '还没有推荐内容',
-            message: '资料库里有条目后，继续观看、最近添加、评分最高和类型行会出现在这里',
           );
         }
         return RefreshIndicator(

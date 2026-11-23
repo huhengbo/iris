@@ -48,7 +48,7 @@ class DetailArgs {
 }
 
 /// 电影和剧集详情，见 DESIGN.md「布局 › 详情」：剧照铺满顶部渐隐（宽屏时海报在左）
-/// → 片名、原名与元数据 → 简介两行 → 播放和操作 → 版本、音频、字幕三个下拉
+/// → 片名、原名与元数据 → 简介两行 → 播放和操作 → 版本、音频、字幕
 /// → 演职人员 → 季与集 → 更多类似。单集页用同一套页头（下面的 Detail* 组件）。
 class DetailPage extends ConsumerWidget {
   const DetailPage({super.key, required this.id, this.args});
@@ -61,19 +61,14 @@ class DetailPage extends ConsumerWidget {
     final detail = ref.watch(mediaDetailProvider(id));
     final card = detail.value?.card ?? args?.card;
     return Scaffold(
-      body: Stack(
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) => _DetailScroll(
-              width: constraints.maxWidth,
-              heroTag: args?.heroTag ?? 'detail:$id',
-              card: card,
-              detail: detail,
-              onRetry: () => ref.invalidate(mediaDetailProvider(id)),
-            ),
-          ),
-          const DetailBackButton(),
-        ],
+      body: LayoutBuilder(
+        builder: (context, constraints) => _DetailScroll(
+          width: constraints.maxWidth,
+          heroTag: args?.heroTag ?? 'detail:$id',
+          card: card,
+          detail: detail,
+          onRetry: () => ref.invalidate(mediaDetailProvider(id)),
+        ),
       ),
     );
   }
@@ -112,6 +107,14 @@ class _DetailScrollState extends ConsumerState<_DetailScroll> {
   /// 用户选的季；没选时显示推荐那一集所在的季
   int? _seasonId;
 
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
   EdgeInsets get _bodyPadding => detailBodyPadding(context, widget.width);
 
   SeasonSummary? _season(MediaDetail detail) {
@@ -126,97 +129,114 @@ class _DetailScrollState extends ConsumerState<_DetailScroll> {
     final card = widget.card;
     final detail = widget.detail.value;
     final season = detail == null ? null : _season(detail);
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: DetailHeader(
-            width: widget.width,
-            poster: card?.poster ?? Artwork.none,
-            backdrop: DetailBackdrop(
-              heroTag: widget.heroTag,
-              // 没有剧照时用海报顶上，总比空着好
-              art: card == null
-                  ? null
-                  : card.backdrop.isEmpty
-                  ? card.poster
-                  : card.backdrop,
-              failed: widget.detail.hasError,
-            ),
-            aside: detail == null ? null : _Facts(detail: detail),
-            child: card == null
-                ? widget.detail.hasError
-                      ? ErrorRetry(
-                          message: ApiError.from(widget.detail.error!).message,
-                          onRetry: widget.onRetry,
-                        )
-                      : const DetailBodySkeleton()
-                : _Info(
-                    card: card,
-                    detail: detail,
-                    state: widget.detail,
-                    onRetry: widget.onRetry,
-                    versionId: _versionId,
-                    subtitleId: _subtitleId,
-                    onVersion: (id) => setState(() {
-                      _versionId = id;
-                      // 字幕跟着版本走，换了版本重新自动选
-                      _subtitleId = null;
-                    }),
-                    onSubtitle: (id) => setState(() => _subtitleId = id),
-                    onSubtitleAdded: (subtitle) =>
-                        _onSubtitleAdded(detail!.card.id, subtitle),
-                    onPlay: _canPlay(detail) ? () => _playMain(detail!) : null,
-                    admin:
-                        ref.watch(authControllerProvider).value?.isAdmin ??
-                        false,
-                  ),
-          ),
-        ),
-        if (detail != null &&
-            (detail.directors.isNotEmpty ||
-                detail.writers.isNotEmpty ||
-                detail.cast.isNotEmpty))
-          SliverToBoxAdapter(
-            child: PeopleRow(
-              directors: detail.directors,
-              writers: detail.writers,
-              cast: detail.cast,
-              padding: _bodyPadding,
-            ),
-          ),
-        if (detail != null && season != null) ...[
-          SliverPadding(
-            padding: _bodyPadding.copyWith(top: CinemaSpacing.section),
-            sliver: SliverToBoxAdapter(
-              child: _SeasonBar(
-                itemId: detail.card.id,
-                seasons: detail.seasons,
-                selected: season,
-                onSelected: (s) => setState(() => _seasonId = s.id),
+    return Stack(
+      children: [
+        CustomScrollView(
+          controller: _scroll,
+          slivers: [
+            SliverToBoxAdapter(
+              child: DetailHeader(
+                width: widget.width,
+                poster: card?.poster ?? Artwork.none,
+                backdrop: DetailBackdrop(
+                  heroTag: widget.heroTag,
+                  // 没有剧照时用海报顶上，总比空着好
+                  art: card == null
+                      ? null
+                      : card.backdrop.isEmpty
+                      ? card.poster
+                      : card.backdrop,
+                  failed: widget.detail.hasError,
+                ),
+                aside: detail == null ? null : _Facts(detail: detail),
+                child: card == null
+                    ? widget.detail.hasError
+                          ? ErrorRetry(
+                              message: ApiError.from(widget.detail.error!)
+                                  .message,
+                              onRetry: widget.onRetry,
+                            )
+                          : const DetailBodySkeleton()
+                    : _Info(
+                        card: card,
+                        detail: detail,
+                        state: widget.detail,
+                        onRetry: widget.onRetry,
+                        versionId: _versionId,
+                        subtitleId: _subtitleId,
+                        onVersion: (id) => setState(() {
+                          _versionId = id;
+                          // 字幕跟着版本走，换了版本重新自动选
+                          _subtitleId = null;
+                        }),
+                        onSubtitle: (id) => setState(() => _subtitleId = id),
+                        onSubtitleAdded: (subtitle) =>
+                            _onSubtitleAdded(detail!.card.id, subtitle),
+                        onPlay: _canPlay(detail)
+                            ? () => _playMain(detail!)
+                            : null,
+                        admin:
+                            ref.watch(authControllerProvider).value?.isAdmin ??
+                            false,
+                      ),
               ),
             ),
-          ),
-          _Episodes(
-            itemId: detail.card.id,
-            seasonId: season.id,
-            next: detail.card.watched ? null : detail.nextEpisode,
-            firstSeason: season.id == detail.seasons.first.id,
-            padding: _bodyPadding,
-            onPlay: (e) => context.push(
-              '/item/${detail.card.id}/episode/${e.id}?season=${season.id}',
+            if (detail != null &&
+                (detail.directors.isNotEmpty ||
+                    detail.writers.isNotEmpty ||
+                    detail.cast.isNotEmpty))
+              SliverToBoxAdapter(
+                child: PeopleRow(
+                  directors: detail.directors,
+                  writers: detail.writers,
+                  cast: detail.cast,
+                  padding: _bodyPadding,
+                ),
+              ),
+            if (detail != null && season != null) ...[
+              SliverPadding(
+                padding: _bodyPadding.copyWith(top: CinemaSpacing.section),
+                sliver: SliverToBoxAdapter(
+                  child: _SeasonBar(
+                    itemId: detail.card.id,
+                    seasons: detail.seasons,
+                    selected: season,
+                    onSelected: (s) => setState(() => _seasonId = s.id),
+                  ),
+                ),
+              ),
+              _Episodes(
+                itemId: detail.card.id,
+                seasonId: season.id,
+                next: detail.card.watched ? null : detail.nextEpisode,
+                firstSeason: season.id == detail.seasons.first.id,
+                padding: _bodyPadding,
+                onPlay: (e) => context.push(
+                  '/item/${detail.card.id}/episode/${e.id}?season=${season.id}',
+                ),
+              ),
+            ],
+            // 更多类似：空列表和加载失败都不占位，不影响详情页其余部分
+            if (detail != null)
+              SliverToBoxAdapter(
+                child: RelatedRow(
+                  itemId: detail.card.id,
+                  padding: _bodyPadding,
+                ),
+              ),
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height:
+                    CinemaSpacing.section +
+                    MediaQuery.paddingOf(context).bottom,
+              ),
             ),
-          ),
-        ],
-        // 更多类似：空列表和加载失败都不占位，不影响详情页其余部分
-        if (detail != null)
-          SliverToBoxAdapter(
-            child: RelatedRow(itemId: detail.card.id, padding: _bodyPadding),
-          ),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height:
-                CinemaSpacing.section + MediaQuery.paddingOf(context).bottom,
-          ),
+          ],
+        ),
+        DetailTopBar(
+          controller: _scroll,
+          title: card?.title,
+          revealOffset: detailArtHeight(widget.width) * 0.58,
         ),
       ],
     );

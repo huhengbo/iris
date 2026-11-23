@@ -53,12 +53,9 @@ class _CollectionsPageState extends ConsumerState<CollectionsPage> {
       value: collections,
       onRetry: () => ref.invalidate(libraryCollectionsProvider(_libraryId)),
       builder: (items) => items.isEmpty
-          ? EmptyState(
+          ? const EmptyState(
               icon: Icons.collections_bookmark_outlined,
               title: '还没有合集',
-              message: isAdmin
-                  ? '新建合集后，再把系列或同主题的影片加进来。'
-                  : '管理员可以按系列或主题把影片整理到一起。',
             )
           : LayoutBuilder(
               builder: (context, constraints) {
@@ -440,10 +437,9 @@ class _CollectionDetailPageState extends ConsumerState<CollectionDetailPage> {
               if (_busy) return;
               if (!_selected.add(id)) _selected.remove(id);
             }),
-            empty: EmptyState(
+            empty: const EmptyState(
               icon: Icons.collections_bookmark_outlined,
               title: '合集还是空的',
-              message: isAdmin ? '在影片详情页的「更多操作」里选「加入合集」。' : '管理员整理后，影片会出现在这里。',
             ),
           ),
         ],

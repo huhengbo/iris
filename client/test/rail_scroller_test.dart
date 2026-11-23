@@ -91,4 +91,43 @@ void main() {
     expect(find.byTooltip('向后'), findsNothing);
     expect(find.byTooltip('向前'), findsOneWidget);
   });
+
+  testWidgets('reduced motion jumps without animation when paging', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 400,
+                height: 100,
+                child: RailScroller(
+                  controller: controller,
+                  builder: (context, controller) => ListView.builder(
+                    controller: controller,
+                    scrollDirection: Axis.horizontal,
+                    itemCount: 20,
+                    itemBuilder: (_, i) =>
+                        SizedBox(width: 100, child: Text('$i')),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _hover(tester);
+
+    await tester.tap(find.byTooltip('向后'));
+    await tester.pump();
+    expect(controller.offset, closeTo(320, 1));
+  });
 }

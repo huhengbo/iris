@@ -1,4 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:iris/app/theme.dart';
 import 'package:iris/features/library/browse_api.dart';
 import 'package:iris/features/play/player_page.dart';
 
@@ -70,5 +72,106 @@ void main() {
     );
     expect(lastOfLast.hasNext, isFalse);
     expect(lastOfLast.hasPrevious, isTrue);
+  });
+
+  test('EpisodeQueue.select 切换到指定季与集并更新前后边界', () {
+    final seasons = [_season(1, 1), _season(2, 2)];
+    final season1 = SeasonDetail(
+      id: 1,
+      itemId: 7,
+      number: 1,
+      episodes: [_episode(1), _episode(2)],
+    );
+    final season2 = SeasonDetail(
+      id: 2,
+      itemId: 7,
+      number: 2,
+      episodes: [_episode(1), _episode(2)],
+    );
+
+    final initial = EpisodeQueue(seasons: seasons, season: season1, index: 0);
+    final selected = initial.select(season2, 1);
+    expect(selected.season.id, 2);
+    expect(selected.index, 1);
+    expect(selected.current.id, 102);
+    expect(selected.hasPrevious, isTrue);
+    expect(selected.hasNext, isFalse);
+  });
+
+  testWidgets('选集弹窗多季时支持顶部切换季并按需加载并返回新队列', (tester) async {
+    final seasons = [_season(1, 1), _season(2, 2)];
+    final season1 = SeasonDetail(
+      id: 1,
+      itemId: 7,
+      number: 1,
+      episodes: [_episode(1), _episode(2)],
+    );
+    final season2 = SeasonDetail(
+      id: 2,
+      itemId: 7,
+      number: 2,
+      episodes: [
+        Episode(
+          id: 201,
+          number: 1,
+          name: '第二季第一集',
+          versions: _file,
+          favorite: false,
+        ),
+        Episode(
+          id: 202,
+          number: 2,
+          name: '第二季第二集',
+          versions: _file,
+          favorite: false,
+        ),
+      ],
+    );
+    final queue = EpisodeQueue(seasons: seasons, season: season1, index: 1);
+    final loadedIds = <int>[];
+    EpisodeQueue? picked;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                picked = await showEpisodePicker(
+                  context,
+                  queue,
+                  loadSeason: (id) async {
+                    loadedIds.add(id);
+                    return season2;
+                  },
+                );
+              },
+              child: const Text('选集'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('选集'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(ChoiceChip, '第 1 季'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, '第 2 季'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '第 2 季'));
+    await tester.pumpAndSettle();
+
+    expect(loadedIds, [2]);
+    expect(find.text('第二季第一集'), findsOneWidget);
+
+    await tester.tap(find.text('第二季第一集'));
+    await tester.pumpAndSettle();
+
+    expect(picked, isNotNull);
+    expect(picked!.season.id, 2);
+    expect(picked!.index, 0);
+    expect(picked!.current.id, 201);
   });
 }

@@ -40,12 +40,6 @@ class AboutPage extends ConsumerWidget {
             textAlign: TextAlign.center,
             style: textTheme.headlineMedium,
           ),
-          const SizedBox(height: 4),
-          Text(
-            '家里的片库，点开就看',
-            textAlign: TextAlign.center,
-            style: textTheme.bodyMedium!.copyWith(color: CinemaColors.text2),
-          ),
           const SizedBox(height: 24),
           Text(
             switch (version) {

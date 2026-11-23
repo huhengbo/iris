@@ -38,7 +38,7 @@ void main() {
       expect(find.text('alice'), findsOneWidget);
       expect(find.byTooltip('复制地址'), findsOneWidget);
       expect(find.byTooltip('复制用户名'), findsOneWidget);
-      expect(find.textContaining('密码就是登录密码'), findsOneWidget);
+      expect(find.text('密码同登录密码'), findsOneWidget);
       expect(_switchValue(tester), isTrue);
     });
 

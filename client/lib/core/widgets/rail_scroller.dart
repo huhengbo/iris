@@ -67,7 +67,7 @@ class _RailScrollerState extends State<RailScroller> {
     } else {
       controller.animateTo(
         target,
-        duration: Motion.focus,
+        duration: Motion.medium,
         curve: Motion.emphasized,
       );
     }
@@ -83,34 +83,56 @@ class _RailScrollerState extends State<RailScroller> {
       ),
     );
     if (isTelevision(context)) return child;
+    final showBack = _hovered && _canBack;
+    final showForward = _hovered && _canForward;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: Stack(
         children: [
           child,
-          if (_hovered && _canBack)
-            Positioned.fill(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: _Arrow(
-                  icon: Icons.chevron_left,
-                  tooltip: '向前',
-                  onPressed: () => _page(-1),
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: IgnorePointer(
+                ignoring: !showBack,
+                child: AnimatedSwitcher(
+                  duration: Motion.short,
+                  switchInCurve: Motion.emphasized,
+                  switchOutCurve: Motion.emphasized,
+                  child: showBack
+                      ? _Arrow(
+                          key: const ValueKey('back-arrow'),
+                          icon: Icons.chevron_left,
+                          tooltip: '向前',
+                          onPressed: () => _page(-1),
+                        )
+                      : const SizedBox.shrink(key: ValueKey('back-empty')),
                 ),
               ),
             ),
-          if (_hovered && _canForward)
-            Positioned.fill(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: _Arrow(
-                  icon: Icons.chevron_right,
-                  tooltip: '向后',
-                  onPressed: () => _page(1),
+          ),
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: IgnorePointer(
+                ignoring: !showForward,
+                child: AnimatedSwitcher(
+                  duration: Motion.short,
+                  switchInCurve: Motion.emphasized,
+                  switchOutCurve: Motion.emphasized,
+                  child: showForward
+                      ? _Arrow(
+                          key: const ValueKey('forward-arrow'),
+                          icon: Icons.chevron_right,
+                          tooltip: '向后',
+                          onPressed: () => _page(1),
+                        )
+                      : const SizedBox.shrink(key: ValueKey('forward-empty')),
                 ),
               ),
             ),
+          ),
         ],
       ),
     );
@@ -119,6 +141,7 @@ class _RailScrollerState extends State<RailScroller> {
 
 class _Arrow extends StatelessWidget {
   const _Arrow({
+    super.key,
     required this.icon,
     required this.tooltip,
     required this.onPressed,
@@ -134,15 +157,17 @@ class _Arrow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       // 键盘和遥控器用方向键走片架，箭头只给鼠标
       child: ExcludeFocus(
-        child: IconButton.filled(
-          tooltip: tooltip,
-          style: IconButton.styleFrom(
-            fixedSize: const Size.square(40),
-            backgroundColor: CinemaColors.scrim,
-            foregroundColor: CinemaColors.text0,
+        child: PressScale(
+          child: IconButton.filled(
+            tooltip: tooltip,
+            style: IconButton.styleFrom(
+              fixedSize: const Size.square(40),
+              backgroundColor: CinemaColors.scrim,
+              foregroundColor: CinemaColors.text0,
+            ),
+            onPressed: onPressed,
+            icon: Icon(icon, size: 28),
           ),
-          onPressed: onPressed,
-          icon: Icon(icon, size: 28),
         ),
       ),
     );

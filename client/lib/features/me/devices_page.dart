@@ -24,11 +24,7 @@ class DevicesPage extends ConsumerWidget {
         value: devices,
         onRetry: () => ref.invalidate(myDevicesProvider),
         builder: (items) => items.isEmpty
-            ? const EmptyState(
-                icon: Icons.devices_other,
-                title: '没有登录中的设备',
-                message: '用这个账号登录过的设备会出现在这里，可以随时撤销。',
-              )
+            ? const EmptyState(icon: Icons.devices_other, title: '没有登录中的设备')
             : AdminListWidth(
                 builder: (padding) => ListView.builder(
                   padding: padding,

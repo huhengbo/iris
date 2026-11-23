@@ -60,8 +60,13 @@ class PosterCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
     final subtitle = this.subtitle;
-    final tile = FocusTile(
+    Widget buildTile({
+      required bool externalHover,
+      required double focusScale,
+    }) => FocusTile(
       autofocus: autofocus,
+      focusScale: focusScale,
+      hovered: externalHover,
       semanticLabel: [
         media.title,
         ?subtitle,
@@ -87,6 +92,7 @@ class PosterCard extends ConsumerWidget {
                 children: [
                   ArtHero(
                     tag: heroTag,
+                    radius: CinemaRadius.poster,
                     child: ArtImage(art: media.poster),
                   ),
                   if (onSelect != null)
@@ -139,8 +145,15 @@ class PosterCard extends ConsumerWidget {
       ),
     );
     // 多选时点卡片是勾选，不加悬停层；TV 没有悬停，菜单在详情页
-    if (onSelect != null || isTelevision(context)) return tile;
-    return _PosterOverlay(media: media, heroTag: heroTag, child: tile);
+    if (onSelect != null || isTelevision(context)) {
+      return buildTile(externalHover: false, focusScale: 1.08);
+    }
+    return _PosterOverlay(
+      media: media,
+      heroTag: heroTag,
+      tileBuilder: (hovered) =>
+          buildTile(externalHover: hovered, focusScale: 1),
+    );
   }
 }
 
@@ -175,12 +188,12 @@ class _PosterOverlay extends ConsumerStatefulWidget {
   const _PosterOverlay({
     required this.media,
     required this.heroTag,
-    required this.child,
+    required this.tileBuilder,
   });
 
   final MediaCard media;
   final String heroTag;
-  final Widget child;
+  final Widget Function(bool hovered) tileBuilder;
 
   @override
   ConsumerState<_PosterOverlay> createState() => _PosterOverlayState();
@@ -189,6 +202,7 @@ class _PosterOverlay extends ConsumerStatefulWidget {
 class _PosterOverlayState extends ConsumerState<_PosterOverlay> {
   bool _hovered = false;
   bool _focusWithin = false;
+  bool _tileFocused = false;
 
   /// 操作层有 4 个按钮，海报墙一屏几十张卡，全部常驻构建会拖慢滚动；
   /// 第一次悬停或聚焦时才建，之后留着（淡出动画和 Tab 顺序都要它在）。
@@ -211,12 +225,13 @@ class _PosterOverlayState extends ConsumerState<_PosterOverlay> {
   @override
   Widget build(BuildContext context) {
     // 触屏点过之后焦点可能还留在卡片上，只在键盘、遥控器操作时算聚焦
-    final visible =
-        _hovered ||
-        _focusWithin &&
-            FocusManager.instance.highlightMode ==
-                FocusHighlightMode.traditional;
+    final traditional =
+        FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+    final tileFocused = _tileFocused && traditional;
+    final visible = _hovered || (_focusWithin && traditional);
     _actionsBuilt = _actionsBuilt || visible;
+    final reduced = Motion.reduced(context);
+    final lifted = _hovered && !tileFocused && !reduced;
     final admin = ref.watch(authControllerProvider).value?.isAdmin == true;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -224,33 +239,57 @@ class _PosterOverlayState extends ConsumerState<_PosterOverlay> {
       child: Focus(
         canRequestFocus: false,
         skipTraversal: true,
-        onFocusChange: (v) => setState(() => _focusWithin = v),
-        child: LayoutBuilder(
-          builder: (context, constraints) => Stack(
-            clipBehavior: Clip.none,
-            children: [
-              widget.child,
-              if (_actionsBuilt)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  // 海报是 2:3，操作层只盖住海报，不盖片名
-                  height: constraints.maxWidth * 1.5,
-                  child: IgnorePointer(
-                    ignoring: !visible,
-                    child: AnimatedOpacity(
-                      opacity: visible ? 1 : 0,
-                      duration: Motion.focus,
-                      child: _PosterActions(
-                        media: widget.media,
-                        heroTag: widget.heroTag,
-                        admin: admin,
+        onFocusChange: (v) {
+          if (v != _focusWithin) setState(() => _focusWithin = v);
+        },
+        child: AnimatedScale(
+          scale: tileFocused && !reduced ? 1.08 : 1,
+          duration: reduced ? Duration.zero : Motion.focus,
+          curve: Motion.emphasized,
+          child: LayoutBuilder(
+            builder: (context, constraints) => Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Focus(
+                  canRequestFocus: false,
+                  skipTraversal: true,
+                  onFocusChange: (v) {
+                    if (v != _tileFocused) setState(() => _tileFocused = v);
+                  },
+                  child: widget.tileBuilder(_hovered),
+                ),
+                if (_actionsBuilt)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    // 海报是 2:3，操作层只盖住海报，不盖片名
+                    height: constraints.maxWidth * 1.5,
+                    child: AnimatedContainer(
+                      duration: reduced ? Duration.zero : Motion.focus,
+                      curve: Motion.emphasized,
+                      transform: Matrix4.translationValues(
+                        0,
+                        lifted ? -4 : 0,
+                        0,
+                      ),
+                      child: IgnorePointer(
+                        ignoring: !visible,
+                        child: AnimatedOpacity(
+                          opacity: visible ? 1 : 0,
+                          duration: Motion.focus,
+                          curve: Motion.emphasized,
+                          child: _PosterActions(
+                            media: widget.media,
+                            heroTag: widget.heroTag,
+                            admin: admin,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

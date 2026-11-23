@@ -42,9 +42,11 @@ class _Scrim extends StatelessWidget {
   }
 }
 
-/// 缓冲时屏幕正中的圈和百分比
+/// 缓冲时屏幕正中的圈和百分比，带暗色圆底保障亮画面下的对比度。
 class _BufferingIndicator extends StatelessWidget {
-  const _BufferingIndicator({required this.percent});
+  const _BufferingIndicator({required this.visible, required this.percent});
+
+  final bool visible;
 
   /// 0–100
   final double percent;
@@ -53,26 +55,110 @@ class _BufferingIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: Center(
-        child: SizedBox.square(
-          dimension: 56,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              const SizedBox.expand(
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  color: CinemaColors.amber,
+        child: AnimatedSwitcher(
+          duration: Motion.short,
+          switchInCurve: Motion.emphasized,
+          switchOutCurve: Motion.emphasized,
+          child: visible
+              ? DecoratedBox(
+                  key: const ValueKey(true),
+                  decoration: const BoxDecoration(
+                    color: CinemaColors.scrim,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: SizedBox.square(
+                      dimension: 52,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          const SizedBox.expand(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: CinemaColors.amber,
+                            ),
+                          ),
+                          Text(
+                            '${percent.clamp(0, 100).round()}%',
+                            style: Theme.of(context).textTheme.labelSmall!
+                                .copyWith(
+                                  color: CinemaColors.text0,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(key: ValueKey(false)),
+        ),
+      ),
+    );
+  }
+}
+
+/// 屏幕中上方的临时提示：淡出时保留最后内容直至透明度归零，避免瞬间闪烁消失。
+class _CenterHud extends StatefulWidget {
+  const _CenterHud({required this.content});
+
+  final Widget? content;
+
+  @override
+  State<_CenterHud> createState() => _CenterHudState();
+}
+
+class _CenterHudState extends State<_CenterHud> {
+  Widget? _cached;
+
+  @override
+  void initState() {
+    super.initState();
+    _cached = widget.content;
+  }
+
+  @override
+  void didUpdateWidget(_CenterHud oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.content != null) {
+      _cached = widget.content;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final showing = widget.content != null;
+    final child = widget.content ?? _cached;
+    return IgnorePointer(
+      child: Align(
+        alignment: const Alignment(0, -0.35),
+        child: AnimatedOpacity(
+          opacity: showing ? 1 : 0,
+          duration: Motion.short,
+          curve: Motion.emphasized,
+          onEnd: () {
+            if (widget.content == null && _cached != null) {
+              setState(() => _cached = null);
+            }
+          },
+          child: child == null
+              ? const SizedBox.shrink()
+              : DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: CinemaColors.scrim,
+                    borderRadius: BorderRadius.circular(CinemaRadius.pill),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: child,
+                  ),
                 ),
-              ),
-              Text(
-                '${percent.clamp(0, 100).round()}%',
-                style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                  color: CinemaColors.text0,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

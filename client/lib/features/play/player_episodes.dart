@@ -28,6 +28,8 @@ int? nextPlayableIndex(List<Episode> episodes, int from, int step) {
   return null;
 }
 
+String _seasonLabel(int number) => number == 0 ? '特别篇' : '第 $number 季';
+
 /// 正在放的这一集在剧里的位置：所在的季、季里的分集，以及能前后切的季。
 /// 跨季时才再取相邻那一季的分集。
 class EpisodeQueue {
@@ -55,20 +57,20 @@ class EpisodeQueue {
       nextPlayableIndex(season.episodes, index, 1) != null ||
       (_seasonIndex >= 0 && _seasonIndex < seasons.length - 1);
 
+  EpisodeQueue select(SeasonDetail targetSeason, int targetIndex) =>
+      EpisodeQueue(seasons: seasons, season: targetSeason, index: targetIndex);
+
   /// 季里没有了就到相邻的季：往后是那一季的第一集，往前是最后一集
-  Future<Episode?> neighbour(Dio dio, String baseUrl, int step) async {
+  Future<EpisodeQueue?> neighbour(Dio dio, String baseUrl, int step) async {
     final within = nextPlayableIndex(season.episodes, index, step);
-    if (within != null) return season.episodes[within];
+    if (within != null) return select(season, within);
     final other = _seasonIndex + step;
     if (_seasonIndex < 0 || other < 0 || other >= seasons.length) return null;
-    final episodes = (await _fetchSeason(
-      dio,
-      baseUrl,
-      seasons[other].id,
-    )).episodes;
+    final otherSeason = await _fetchSeason(dio, baseUrl, seasons[other].id);
+    final episodes = otherSeason.episodes;
     final start = step > 0 ? -1 : episodes.length;
     final found = nextPlayableIndex(episodes, start, step);
-    return found == null ? null : episodes[found];
+    return found == null ? null : select(otherSeason, found);
   }
 }
 
@@ -97,15 +99,81 @@ Future<EpisodeQueue?> loadEpisodeQueue(
   return EpisodeQueue(seasons: seasons, season: season, index: index);
 }
 
-/// 选集：列出这一季的分集，当前这一集打勾，没有文件的灰掉。选了返回那一集。
-Future<Episode?> showEpisodePicker(BuildContext context, EpisodeQueue queue) {
-  final season = queue.season;
-  return showDialog<Episode>(
+/// 选集：列出这一季的分集，当前这一集打勾，没有文件的灰掉；多季时顶部可切换季。
+/// 选了返回更新后的队列。
+Future<EpisodeQueue?> showEpisodePicker(
+  BuildContext context,
+  EpisodeQueue queue, {
+  Future<SeasonDetail> Function(int seasonId)? loadSeason,
+}) {
+  return showDialog<EpisodeQueue>(
     context: context,
-    builder: (context) => Dialog(
+    builder: (context) => _EpisodePicker(queue: queue, loadSeason: loadSeason),
+  );
+}
+
+class _EpisodePicker extends StatefulWidget {
+  const _EpisodePicker({required this.queue, this.loadSeason});
+
+  final EpisodeQueue queue;
+  final Future<SeasonDetail> Function(int seasonId)? loadSeason;
+
+  @override
+  State<_EpisodePicker> createState() => _EpisodePickerState();
+}
+
+class _EpisodePickerState extends State<_EpisodePicker> {
+  late final Map<int, SeasonDetail> _cache = {
+    widget.queue.season.id: widget.queue.season,
+  };
+  late int _seasonId = widget.queue.season.id;
+  bool _loading = false;
+  String? _error;
+  int _loadToken = 0;
+
+  Future<void> _selectSeason(int seasonId, {bool force = false}) async {
+    if (seasonId == _seasonId && !force) return;
+    final cached = _cache[seasonId];
+    if (cached != null && !force) {
+      _loadToken++;
+      setState(() {
+        _seasonId = seasonId;
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
+    final loader = widget.loadSeason;
+    if (loader == null) return;
+    final token = ++_loadToken;
+    setState(() {
+      _seasonId = seasonId;
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final detail = await loader(seasonId);
+      if (!mounted || token != _loadToken) return;
+      _cache[seasonId] = detail;
+      setState(() => _loading = false);
+    } on Object {
+      if (!mounted || token != _loadToken) return;
+      setState(() {
+        _loading = false;
+        _error = '没能加载分集';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final showSeasons =
+        widget.queue.seasons.length > 1 && widget.loadSeason != null;
+    final season = _cache[_seasonId];
+    return Dialog(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
-        child: SingleChildScrollView(
+        child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -113,25 +181,88 @@ Future<Episode?> showEpisodePicker(BuildContext context, EpisodeQueue queue) {
             children: [
               PickerHeader(
                 title: '选集',
-                subtitle: season.number == 0 ? '特别篇' : '第 ${season.number} 季',
+                subtitle: showSeasons
+                    ? null
+                    : _seasonLabel(widget.queue.season.number),
               ),
-              for (final (i, episode) in season.episodes.indexed)
-                _ScrollIntoView(
-                  child: PickerOption(
-                    title: '第 ${episode.number} 集',
-                    subtitle: episode.versions.isEmpty
-                        ? '没有可播放的文件'
-                        : episode.name,
-                    selected: i == queue.index,
-                    autofocus: i == queue.index,
-                    enabled: episode.versions.isNotEmpty,
-                    onTap: () => Navigator.of(context).pop(episode),
+              if (showSeasons)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final (i, s) in widget.queue.seasons.indexed) ...[
+                          if (i > 0) const SizedBox(width: 8),
+                          ChoiceChip(
+                            label: Text(_seasonLabel(s.number)),
+                            selected: s.id == _seasonId,
+                            onSelected: (_) => unawaited(_selectSeason(s.id)),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: _loading
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 32),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      : _error != null || season == null
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _error ?? '没能加载分集',
+                                style: Theme.of(context).textTheme.bodyMedium!
+                                    .copyWith(color: CinemaColors.text2),
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton(
+                                onPressed: () => unawaited(
+                                  _selectSeason(_seasonId, force: true),
+                                ),
+                                child: const Text('重试'),
+                              ),
+                            ],
+                          ),
+                        )
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final (i, episode) in season.episodes.indexed)
+                              _ScrollIntoView(
+                                child: PickerOption(
+                                  title: '第 ${episode.number} 集',
+                                  subtitle: episode.versions.isEmpty
+                                      ? '没有可播放的文件'
+                                      : episode.name,
+                                  selected:
+                                      season.id == widget.queue.season.id &&
+                                      i == widget.queue.index,
+                                  autofocus:
+                                      season.id == widget.queue.season.id &&
+                                      i == widget.queue.index,
+                                  enabled: episode.versions.isNotEmpty,
+                                  onTap: () =>
+                                      Navigator.of(context)
+                                          .pop(widget.queue.select(season, i)),
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+              ),
             ],
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

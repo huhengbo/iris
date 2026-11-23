@@ -70,13 +70,13 @@ class CheckUpdateTile extends ConsumerWidget {
       child: ListTile(
         leading: const Icon(Icons.system_update_outlined),
         title: const Text('检查更新'),
-        subtitle: Text(switch (status) {
-          UpdateIdle() => '从 GitHub 获取最新版本',
-          UpdateChecking() => '正在检查…',
-          UpdateUpToDate() => '已是最新版本',
-          UpdateAvailable(:final update) => '发现新版本 ${update.version}',
-          UpdateFailed(:final message) => '检查失败：$message',
-        }),
+        subtitle: switch (status) {
+          UpdateIdle() => null,
+          UpdateChecking() => const Text('正在检查…'),
+          UpdateUpToDate() => const Text('已是最新版本'),
+          UpdateAvailable(:final update) => Text('发现新版本 ${update.version}'),
+          UpdateFailed(:final message) => Text('检查失败：$message'),
+        },
         trailing: checking
             ? const SizedBox.square(
                 dimension: 20,
@@ -108,7 +108,6 @@ class AutoCheckUpdateTile extends ConsumerWidget {
       child: ListTile(
         leading: const Icon(Icons.system_update_outlined),
         title: const Text('自动检查更新'),
-        subtitle: const Text('启动时检查，每天最多一次'),
         // 整行可点，开关本身不再单独抢焦点
         trailing: ExcludeFocus(
           child: Switch(
@@ -151,7 +150,7 @@ class DownloadPrefixTile extends ConsumerWidget {
       child: ListTile(
         leading: const Icon(Icons.speed_outlined),
         title: const Text('下载加速前缀'),
-        subtitle: Text(prefix.isEmpty ? '未设置，直接访问 GitHub' : prefix),
+        subtitle: Text(prefix.isEmpty ? '未设置' : prefix),
         onTap: () => _edit(context, ref, prefix),
       ),
     );
@@ -201,7 +200,7 @@ class _PrefixDialogState extends State<_PrefixDialog> {
         decoration: InputDecoration(
           labelText: '前缀地址',
           hintText: 'https://加速域名/',
-          helperText: '会拼在 GitHub 地址前面，留空表示直接访问',
+          helperText: '拼在 GitHub 地址前，留空则直连',
           helperMaxLines: 2,
           errorText: _error,
         ),

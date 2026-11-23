@@ -50,18 +50,6 @@ class AccountProfilePage extends ConsumerWidget {
             const SectionTitle('密码'),
             const ChangePasswordTile(),
             const SectionTitle('外部访问'),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                CinemaSpacing.gutter,
-                0,
-                CinemaSpacing.gutter,
-                8,
-              ),
-              child: Text(
-                'WebDAV 用这个账号的用户名和登录密码，在 Infuse 等播放器里直接浏览片库。',
-                style: textTheme.bodySmall?.copyWith(color: CinemaColors.text2),
-              ),
-            ),
             const WebDavSection(),
           ],
         ),

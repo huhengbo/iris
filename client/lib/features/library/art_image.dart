@@ -1,3 +1,5 @@
+import 'dart:ui' show lerpDouble;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -60,21 +62,36 @@ class ArtImage extends StatelessWidget {
           fit: BoxFit.cover,
           width: double.infinity,
           height: double.infinity,
+          gaplessPlayback: true,
           frameBuilder: (context, child, frame, synchronous) {
             if (synchronous) return child;
-            return AnimatedOpacity(
-              opacity: frame == null ? 0 : 1,
-              duration: Motion.short,
-              child: child,
-            );
+            return _ArtFrameLayer(loaded: frame != null, child: child);
           },
-          loadingBuilder: (context, child, progress) =>
-              progress == null ? child : const Skeleton(),
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            if (child is _ArtFrameLayer && child.loaded) return child;
+            return const Skeleton();
+          },
           errorBuilder: (_, _, _) => _ArtPlaceholder(icon: icon),
         );
       },
     );
   }
+}
+
+class _ArtFrameLayer extends StatelessWidget {
+  const _ArtFrameLayer({required this.loaded, required this.child});
+
+  final bool loaded;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => AnimatedOpacity(
+    opacity: loaded ? 1 : 0,
+    duration: Motion.short,
+    curve: Motion.emphasized,
+    child: child,
+  );
 }
 
 class _ArtPlaceholder extends StatelessWidget {
@@ -155,13 +172,19 @@ class ArtFrame extends StatelessWidget {
   }
 }
 
-/// 海报/剧照的共享元素：飞行途中在两端图片之间交叉淡化（海报 → 详情页剧照）。
-/// 减少动态效果时不飞。
+/// 海报/剧照的共享元素：飞行途中在两端图片之间交叉淡化（海报 → 详情页剧照），
+/// 并按两端圆角插值裁切，避免起止瞬间出现直角/圆角跳变。减少动态效果时不飞。
 class ArtHero extends StatelessWidget {
-  const ArtHero({super.key, required this.tag, required this.child});
+  const ArtHero({
+    super.key,
+    required this.tag,
+    required this.child,
+    this.radius = 0,
+  });
 
   final Object tag;
   final Widget child;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
@@ -178,18 +201,37 @@ class ArtHero extends StatelessWidget {
     BuildContext fromContext,
     BuildContext toContext,
   ) {
-    final from = (fromContext.widget as Hero).child;
-    final to = (toContext.widget as Hero).child;
+    final fromHero = fromContext.widget as Hero;
+    final toHero = toContext.widget as Hero;
+    final fromRadius =
+        fromContext.findAncestorWidgetOfExactType<ArtHero>()?.radius ?? 0;
+    final toRadius =
+        toContext.findAncestorWidgetOfExactType<ArtHero>()?.radius ?? 0;
     // 打开时 animation 0→1，返回时 1→0；详情页那一侧始终随 animation 显隐
-    final (below, above) = direction == HeroFlightDirection.push
-        ? (from, to)
-        : (to, from);
-    return Stack(
+    final (
+      below,
+      above,
+      startRadius,
+      endRadius,
+    ) = direction == HeroFlightDirection.push
+        ? (fromHero.child, toHero.child, fromRadius, toRadius)
+        : (toHero.child, fromHero.child, toRadius, fromRadius);
+    final stack = Stack(
       fit: StackFit.expand,
       children: [
         below,
         FadeTransition(opacity: animation, child: above),
       ],
+    );
+    if (startRadius == 0 && endRadius == 0) return stack;
+    return AnimatedBuilder(
+      animation: animation,
+      child: stack,
+      builder: (context, child) {
+        final r = lerpDouble(startRadius, endRadius, animation.value) ?? 0;
+        if (r <= 0) return child!;
+        return ClipRRect(borderRadius: BorderRadius.circular(r), child: child);
+      },
     );
   }
 }

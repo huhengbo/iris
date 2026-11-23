@@ -106,24 +106,125 @@ class _Poster extends StatelessWidget {
   }
 }
 
-/// 压在剧照上的返回按钮。直接打开的地址没有上一页时回首页。
-class DetailBackButton extends StatelessWidget {
-  const DetailBackButton({super.key});
+/// 压在剧照上的吸顶顶栏：初始只留 scrim 圆底返回钮，滚过头图后淡入底色、
+/// 底部分割线与片名。直接打开的地址没有上一页时返回回首页。
+class DetailTopBar extends StatefulWidget {
+  const DetailTopBar({
+    super.key,
+    required this.controller,
+    required this.revealOffset,
+    this.title,
+  });
+
+  final ScrollController controller;
+  final double revealOffset;
+  final String? title;
+
+  @override
+  State<DetailTopBar> createState() => _DetailTopBarState();
+}
+
+class _DetailTopBarState extends State<DetailTopBar> {
+  bool _scrolled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_sync);
+    _scrolled =
+        widget.controller.hasClients &&
+        widget.controller.offset > widget.revealOffset;
+  }
+
+  @override
+  void didUpdateWidget(DetailTopBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_sync);
+      widget.controller.addListener(_sync);
+    }
+    _sync();
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_sync);
+    super.dispose();
+  }
+
+  void _sync() {
+    final next =
+        widget.controller.hasClients &&
+        widget.controller.offset > widget.revealOffset;
+    if (next != _scrolled && mounted) {
+      setState(() => _scrolled = next);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: IconButton.filled(
-          tooltip: '返回',
-          style: IconButton.styleFrom(
-            fixedSize: const Size.square(44),
-            backgroundColor: CinemaColors.scrim,
-            foregroundColor: CinemaColors.text0,
+    final title = widget.title;
+    final showTitle = _scrolled && title != null && title.isNotEmpty;
+    final duration = Motion.reduced(context) ? Duration.zero : Motion.short;
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: 0,
+      child: AnimatedContainer(
+        duration: duration,
+        curve: Motion.emphasized,
+        decoration: BoxDecoration(
+          color: _scrolled ? CinemaColors.bg : Colors.transparent,
+          border: Border(
+            bottom: BorderSide(
+              color: _scrolled ? CinemaColors.line : Colors.transparent,
+            ),
           ),
-          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
-          icon: const Icon(Icons.arrow_back),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                IconButton.filled(
+                  tooltip: '返回',
+                  style: IconButton.styleFrom(
+                    fixedSize: const Size.square(44),
+                    backgroundColor: _scrolled
+                        ? Colors.transparent
+                        : CinemaColors.scrim,
+                    foregroundColor: CinemaColors.text0,
+                  ),
+                  onPressed: () =>
+                      context.canPop() ? context.pop() : context.go('/'),
+                  icon: const Icon(Icons.arrow_back),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: duration,
+                    switchInCurve: Motion.emphasized,
+                    switchOutCurve: Motion.emphasized,
+                    layoutBuilder: (currentChild, previousChildren) => Stack(
+                      alignment: Alignment.centerLeft,
+                      children: [...previousChildren, ?currentChild],
+                    ),
+                    child: showTitle
+                        ? Text(
+                            title,
+                            key: ValueKey(title),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium!
+                                .copyWith(color: CinemaColors.text0),
+                          )
+                        : const SizedBox.shrink(key: ValueKey('empty')),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

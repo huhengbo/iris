@@ -37,9 +37,6 @@ class ServersPage extends ConsumerWidget {
                     child: EmptyState(
                       icon: Icons.dns_outlined,
                       title: '连接你的光圈服务器',
-                      message:
-                          '填写服务器地址，例如 http://192.168.1.10:8080。'
-                          '可以保存多台服务器，随时切换。',
                       action: add,
                     ),
                   )
