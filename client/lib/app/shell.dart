@@ -40,12 +40,49 @@ class _AppShellState extends State<AppShell> {
   /// 宽屏侧栏：内容区最左边再按左键时要拿它的焦点节点和当前项
   final _sidebar = GlobalKey<WideSidebarState>();
 
+  /// 宽屏顶栏：全局快捷键 `/` 或 `Cmd/Ctrl + K` 时聚焦搜索框
+  final _topBar = GlobalKey<TopBarState>();
+
   StatefulNavigationShell get navigationShell => widget.navigationShell;
 
   @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_onGlobalKey);
+  }
+
+  @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onGlobalKey);
     _rail.dispose();
     super.dispose();
+  }
+
+  bool _onGlobalKey(KeyEvent event) {
+    if (!mounted || event is! KeyDownEvent) return false;
+    if (MediaQuery.sizeOf(context).width < wideLayoutBreakpoint) return false;
+    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return false;
+    final focused = FocusManager.instance.primaryFocus;
+    if (focused != null &&
+        (focused.context?.widget is EditableText ||
+            focused.context?.findAncestorWidgetOfExactType<EditableText>() !=
+                null)) {
+      return false;
+    }
+    final hw = HardwareKeyboard.instance;
+    final isSlash =
+        event.logicalKey == LogicalKeyboardKey.slash &&
+        !hw.isControlPressed &&
+        !hw.isMetaPressed &&
+        !hw.isAltPressed &&
+        !hw.isShiftPressed;
+    final isCmdK =
+        event.logicalKey == LogicalKeyboardKey.keyK &&
+        (hw.isMetaPressed || hw.isControlPressed) &&
+        !hw.isAltPressed;
+    if (!isSlash && !isCmdK) return false;
+    _topBar.currentState?.focusSearch();
+    return true;
   }
 
   void _select(int index) {
@@ -102,11 +139,14 @@ class _AppShellState extends State<AppShell> {
               child: Column(
                 children: [
                   // 顶栏吃掉上边的刘海，下面的页面不再重复留
-                  const SafeArea(
+                  SafeArea(
                     bottom: false,
                     left: false,
                     right: false,
-                    child: TopBar(),
+                    child: TopBar(
+                      key: _topBar,
+                      currentUri: GoRouterState.of(context).uri,
+                    ),
                   ),
                   // 左边距（刘海、TV 过扫描）已由侧栏让开，上边距由顶栏让开
                   Expanded(

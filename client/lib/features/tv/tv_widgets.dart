@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/motion.dart';
 import '../../app/theme.dart';
 import '../../core/api/paging.dart' show Artwork;
 import '../../core/widgets/focus_tile.dart';
+import '../../core/widgets/picker_sheet.dart';
+import '../../core/widgets/snack.dart';
+import '../detail/media_actions.dart';
 import '../library/art_image.dart';
 import '../library/browse_api.dart';
 import '../library/poster_card.dart' show WatchedBadge, openDetail;
+import '../play/play_api.dart' show WatchedScope;
 
 /// 电视版的统一尺寸。电视隔着几米看：卡片大、字大、一屏只放少量内容。
 abstract final class TvMetrics {
@@ -33,8 +39,135 @@ Widget _focusWatcher({required Widget child, required VoidCallback? onFocus}) {
   );
 }
 
+enum _TvQuickAction {
+  toggleWatched,
+  toggleWatchlist,
+  removeFromContinueWatching,
+  viewDetail,
+}
+
+Future<void> _openTvQuickActions(
+  BuildContext context,
+  WidgetRef ref,
+  MediaCard media, {
+  required String heroTag,
+  String? subtitle,
+  bool inContinueWatching = false,
+}) async {
+  MediaDetail? detail;
+  try {
+    detail = await ref.read(mediaDetailProvider(media.id).future);
+  } catch (_) {
+    detail = null;
+  }
+  if (!context.mounted) return;
+  final watched = detail?.card.watched ?? media.watched;
+  final action = await showPickerSheet<_TvQuickAction>(
+    context,
+    builder: (sheetContext) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PickerHeader(title: media.title, subtitle: subtitle),
+        PickerOption(
+          icon: watched ? Icons.check_circle : Icons.check_circle_outline,
+          title: watched ? '标记未看' : '标记已看',
+          autofocus: true,
+          onTap: () =>
+              Navigator.pop(sheetContext, _TvQuickAction.toggleWatched),
+        ),
+        if (detail != null)
+          PickerOption(
+            icon: detail.watchlisted ? Icons.bookmark : Icons.bookmark_border,
+            title: detail.watchlisted ? '移出稍后观看' : '加入稍后观看',
+            onTap: () =>
+                Navigator.pop(sheetContext, _TvQuickAction.toggleWatchlist),
+          ),
+        if (inContinueWatching)
+          PickerOption(
+            icon: Icons.visibility_off_outlined,
+            title: '从继续观看移除',
+            onTap: () => Navigator.pop(
+              sheetContext,
+              _TvQuickAction.removeFromContinueWatching,
+            ),
+          ),
+        PickerOption(
+          icon: Icons.info_outline,
+          title: '查看详情',
+          onTap: () => Navigator.pop(sheetContext, _TvQuickAction.viewDetail),
+        ),
+      ],
+    ),
+  );
+  if (action == null || !context.mounted) return;
+  switch (action) {
+    case _TvQuickAction.toggleWatched:
+      final ok = await markWatched(
+        context,
+        ref,
+        scope: WatchedScope.item,
+        id: media.id,
+        watched: !watched,
+        itemId: media.id,
+      );
+      if (ok && context.mounted) {
+        showSnack(context, !watched ? '已标记为已看' : '已标记为未看');
+      }
+    case _TvQuickAction.toggleWatchlist:
+      final next = !detail!.watchlisted;
+      try {
+        await setWatchlisted(ref, media.id, watchlisted: next);
+        if (context.mounted) {
+          showSnack(context, next ? '已加入稍后观看' : '已移出稍后观看');
+        }
+      } catch (error) {
+        if (context.mounted) showApiErrorSnack(context, error);
+      }
+    case _TvQuickAction.removeFromContinueWatching:
+      await hideFromContinueWatching(context, ref, media);
+    case _TvQuickAction.viewDetail:
+      openDetail(context, media, heroTag);
+  }
+}
+
+class _TvCardActions extends StatefulWidget {
+  const _TvCardActions({required this.onOpenMenu, required this.builder});
+
+  final Future<void> Function() onOpenMenu;
+  final Widget Function(VoidCallback onMenu) builder;
+
+  @override
+  State<_TvCardActions> createState() => _TvCardActionsState();
+}
+
+class _TvCardActionsState extends State<_TvCardActions> {
+  bool _opening = false;
+
+  Future<void> _trigger() async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      await widget.onOpenMenu();
+    } finally {
+      if (mounted) _opening = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.contextMenu): _trigger,
+        const SingleActivator(LogicalKeyboardKey.info): _trigger,
+      },
+      child: widget.builder(_trigger),
+    );
+  }
+}
+
 /// 2:3 海报 + 一行片名。聚焦时放大并描琥珀环。
-class TvPoster extends StatelessWidget {
+class TvPoster extends ConsumerWidget {
   const TvPoster({
     super.key,
     required this.media,
@@ -58,61 +191,71 @@ class TvPoster extends StatelessWidget {
   static double textHeight({bool subtitle = false}) => subtitle ? 64 : 40;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
     final tag = heroTag ?? 'tv:${media.id}';
     return SizedBox(
       width: width,
       child: _focusWatcher(
         onFocus: onFocus == null ? null : () => onFocus!(media),
-        child: FocusTile(
-          autofocus: autofocus,
-          focusScale: 1.07,
-          semanticLabel: [
-            media.title,
-            ?subtitle,
-            if (media.watched) '已看',
-          ].join('，'),
-          onTap: () => openDetail(context, media, tag),
-          builder: (context, highlight) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AspectRatio(
-                aspectRatio: 2 / 3,
-                child: ArtFrame(
-                  highlight: highlight,
-                  radius: CinemaRadius.card,
-                  dimmed: media.watched,
-                  badge: media.watched ? const WatchedBadge() : null,
-                  child: ArtHero(
-                    tag: tag,
+        child: _TvCardActions(
+          onOpenMenu: () => _openTvQuickActions(
+            context,
+            ref,
+            media,
+            heroTag: tag,
+            subtitle: subtitle,
+          ),
+          builder: (onMenu) => FocusTile(
+            autofocus: autofocus,
+            focusScale: 1.07,
+            semanticLabel: [
+              media.title,
+              ?subtitle,
+              if (media.watched) '已看',
+            ].join('，'),
+            onTap: () => openDetail(context, media, tag),
+            onLongPress: onMenu,
+            builder: (context, highlight) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AspectRatio(
+                  aspectRatio: 2 / 3,
+                  child: ArtFrame(
+                    highlight: highlight,
                     radius: CinemaRadius.card,
-                    child: ArtImage(art: media.poster),
+                    dimmed: media.watched,
+                    badge: media.watched ? const WatchedBadge() : null,
+                    child: ArtHero(
+                      tag: tag,
+                      radius: CinemaRadius.card,
+                      child: ArtImage(art: media.poster),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                media.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.titleSmall!.copyWith(
-                  color: highlight.focused
-                      ? CinemaColors.text0
-                      : CinemaColors.text1,
-                  fontWeight: highlight.focused ? FontWeight.w600 : null,
-                ),
-              ),
-              if (subtitle != null)
+                const SizedBox(height: 10),
                 Text(
-                  subtitle!,
+                  media.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: textTheme.bodySmall!.copyWith(
-                    color: CinemaColors.text2,
+                  style: textTheme.titleSmall!.copyWith(
+                    color: highlight.focused
+                        ? CinemaColors.text0
+                        : CinemaColors.text1,
+                    fontWeight: highlight.focused ? FontWeight.w600 : null,
                   ),
                 ),
-            ],
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.bodySmall!.copyWith(
+                      color: CinemaColors.text2,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -121,7 +264,7 @@ class TvPoster extends StatelessWidget {
 }
 
 /// 16:9 剧照卡（继续观看、精选）：标题 + 一行说明，可带进度条。
-class TvStill extends StatelessWidget {
+class TvStill extends ConsumerWidget {
   const TvStill({
     super.key,
     required this.media,
@@ -129,6 +272,7 @@ class TvStill extends StatelessWidget {
     required this.note,
     this.heroTag,
     this.progress,
+    this.continueWatching = false,
     this.onFocus,
     this.autofocus = false,
     this.width = TvMetrics.stillWidth,
@@ -141,6 +285,7 @@ class TvStill extends StatelessWidget {
 
   /// 0–1；为空时不画进度条
   final double? progress;
+  final bool continueWatching;
   final TvFocusCallback? onFocus;
   final bool autofocus;
   final double width;
@@ -148,7 +293,7 @@ class TvStill extends StatelessWidget {
   static const textHeight = 64.0;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
     final progress = this.progress;
     final tag = heroTag ?? 'tv:${media.id}';
@@ -156,57 +301,70 @@ class TvStill extends StatelessWidget {
       width: width,
       child: _focusWatcher(
         onFocus: onFocus == null ? null : () => onFocus!(media),
-        child: FocusTile(
-          autofocus: autofocus,
-          focusScale: 1.05,
-          semanticLabel: '${media.title}，$note',
-          onTap: () => openDetail(context, media, tag),
-          builder: (context, highlight) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AspectRatio(
-                aspectRatio: 16 / 9,
-                child: ArtFrame(
-                  highlight: highlight,
-                  radius: CinemaRadius.card,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ArtHero(
-                        tag: tag,
-                        radius: CinemaRadius.card,
-                        child: ArtImage(art: art),
-                      ),
-                      if (progress != null)
-                        Positioned(
-                          left: 12,
-                          right: 12,
-                          bottom: 12,
-                          child: ProgressLine(value: progress),
+        child: _TvCardActions(
+          onOpenMenu: () => _openTvQuickActions(
+            context,
+            ref,
+            media,
+            heroTag: tag,
+            subtitle: note,
+            inContinueWatching: continueWatching,
+          ),
+          builder: (onMenu) => FocusTile(
+            autofocus: autofocus,
+            focusScale: 1.05,
+            semanticLabel: '${media.title}，$note',
+            onTap: () => openDetail(context, media, tag),
+            onLongPress: onMenu,
+            builder: (context, highlight) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: ArtFrame(
+                    highlight: highlight,
+                    radius: CinemaRadius.card,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        ArtHero(
+                          tag: tag,
+                          radius: CinemaRadius.card,
+                          child: ArtImage(art: art),
                         ),
-                    ],
+                        if (progress != null)
+                          Positioned(
+                            left: 12,
+                            right: 12,
+                            bottom: 12,
+                            child: ProgressLine(value: progress),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                media.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.titleSmall!.copyWith(
-                  color: highlight.focused
-                      ? CinemaColors.text0
-                      : CinemaColors.text1,
-                  fontWeight: highlight.focused ? FontWeight.w600 : null,
+                const SizedBox(height: 10),
+                Text(
+                  media.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.titleSmall!.copyWith(
+                    color: highlight.focused
+                        ? CinemaColors.text0
+                        : CinemaColors.text1,
+                    fontWeight: highlight.focused ? FontWeight.w600 : null,
+                  ),
                 ),
-              ),
-              Text(
-                note,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.bodySmall!.copyWith(color: CinemaColors.text2),
-              ),
-            ],
+                Text(
+                  note,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.bodySmall!.copyWith(
+                    color: CinemaColors.text2,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

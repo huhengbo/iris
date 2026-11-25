@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/motion.dart';
 import '../../app/shell.dart';
+import '../../app/tv.dart' show televisionProvider;
 import '../../core/widgets/rail_scroller.dart';
 import '../../app/theme.dart';
 import '../../core/widgets/confirm_dialog.dart';
@@ -30,6 +31,7 @@ import '../admin/item_actions.dart';
 import '../auth/auth_controller.dart';
 import 'episode_admin.dart';
 import 'media_actions.dart';
+import 'media_info_view.dart';
 import 'people_row.dart';
 import 'related_row.dart';
 import 'stream_rows.dart';
@@ -158,12 +160,16 @@ class _DetailScrollState extends ConsumerState<_DetailScroll> {
                             )
                           : const DetailBodySkeleton()
                     : _Info(
+                        width: widget.width,
                         card: card,
                         detail: detail,
                         state: widget.detail,
                         onRetry: widget.onRetry,
                         versionId: _versionId,
                         subtitleId: _subtitleId,
+                        selectedVersion: detail == null
+                            ? null
+                            : _selectedVersion(detail),
                         onVersion: (id) => setState(() {
                           _versionId = id;
                           // 字幕跟着版本走，换了版本重新自动选
@@ -277,6 +283,12 @@ class _Facts extends StatelessWidget {
 
   final MediaDetail detail;
 
+  static String _formatReleaseDate(String? value) {
+    if (value == null || value.isEmpty) return '';
+    final date = DateTime.tryParse(value);
+    return date == null ? value : formatDate(date, now: DateTime(0));
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -284,7 +296,7 @@ class _Facts extends StatelessWidget {
       ('类型', detail.card.genres.join(' / ')),
       ('制作公司', detail.studios.take(3).join('、')),
       ('国家 / 地区', detail.countries.join('、')),
-      ('上映日期', detail.releaseDate ?? ''),
+      ('上映日期', _formatReleaseDate(detail.releaseDate)),
     ].where((fact) => fact.$2.isNotEmpty).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -307,12 +319,14 @@ class _Facts extends StatelessWidget {
 
 class _Info extends StatelessWidget {
   const _Info({
+    required this.width,
     required this.card,
     required this.detail,
     required this.state,
     required this.onRetry,
     required this.versionId,
     required this.subtitleId,
+    required this.selectedVersion,
     required this.onVersion,
     required this.onSubtitle,
     required this.onSubtitleAdded,
@@ -320,12 +334,14 @@ class _Info extends StatelessWidget {
     required this.admin,
   });
 
+  final double width;
   final MediaCard card;
   final MediaDetail? detail;
   final AsyncValue<MediaDetail> state;
   final VoidCallback onRetry;
   final int? versionId;
   final int? subtitleId;
+  final MediaVersion? selectedVersion;
   final ValueChanged<int?> onVersion;
   final ValueChanged<int?> onSubtitle;
   final Future<void> Function(MediaSubtitle subtitle) onSubtitleAdded;
@@ -338,23 +354,20 @@ class _Info extends StatelessWidget {
     final detail = this.detail;
     final original = card.originalTitle;
     final count = detail?.episodeCount ?? 0;
+    final showGenresInMeta =
+        card.genres.isNotEmpty &&
+        (detail == null || width < detailAsideMinWidth);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          card.title,
-          style: textTheme.headlineMedium!.copyWith(
-            color: CinemaColors.text0,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        DetailTitle(title: card.title, logo: detail?.logo ?? Artwork.none),
         if (original != null && original != card.title)
           Text(original, style: textTheme.bodySmall),
         const SizedBox(height: 6),
         DetailMeta(
           parts: [
             if (card.year != null) '${card.year}',
-            if (card.genres.isNotEmpty) card.genres.take(2).join(' / '),
+            if (showGenresInMeta) card.genres.take(2).join(' / '),
             if (card.kind == MediaKind.series && count > 0) '$count 集',
             if (card.kind == MediaKind.movie && card.runtime != null)
               formatMinutes(card.runtime!),
@@ -362,6 +375,9 @@ class _Info extends StatelessWidget {
           certification: detail?.contentRating,
           rating: card.rating,
           ratings: detail?.ratings ?? const [],
+          techSpecs: selectedVersion == null
+              ? const []
+              : versionTechBadges(selectedVersion!),
         ),
         if (state.hasError && detail == null)
           Padding(

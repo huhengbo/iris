@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iris/app/theme.dart';
+import 'package:iris/core/api/paging.dart';
 import 'package:iris/features/library/browse_api.dart';
 import 'package:iris/features/play/player_page.dart';
 
@@ -173,5 +174,77 @@ void main() {
     expect(picked!.season.id, 2);
     expect(picked!.index, 0);
     expect(picked!.current.id, 201);
+  });
+
+  testWidgets('选集弹窗显示剧照缩略图、2px 琥珀进度条与未选中已看标记', (tester) async {
+    final season = SeasonDetail(
+      id: 1,
+      itemId: 7,
+      number: 1,
+      episodes: [
+        Episode(
+          id: 101,
+          number: 1,
+          name: '已看的一集',
+          still: const Artwork([(width: 320, url: 'http://localhost/s1.jpg')]),
+          versions: _file,
+          watched: true,
+          favorite: false,
+        ),
+        Episode(
+          id: 102,
+          number: 2,
+          name: '正在播的一集',
+          still: const Artwork([(width: 320, url: 'http://localhost/s2.jpg')]),
+          versions: _file,
+          watched: false,
+          progress: const PlayProgress(
+            position: Duration(minutes: 15),
+            duration: Duration(minutes: 30),
+          ),
+          favorite: false,
+        ),
+      ],
+    );
+    final queue = EpisodeQueue(
+      seasons: [_season(1, 1)],
+      season: season,
+      index: 1,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showEpisodePicker(context, queue),
+              child: const Text('选集'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('选集'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // 两集都有 72x40 的缩略图容器
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is SizedBox && w.width == 72 && w.height == 40,
+      ),
+      findsNWidgets(2),
+    );
+    // 第二集有 2px 进度条（FractionallySizedBox widthFactor = 0.5）
+    final bar = tester.widget<FractionallySizedBox>(
+      find.byType(FractionallySizedBox),
+    );
+    expect(bar.widthFactor, closeTo(0.5, 0.01));
+
+    // 第 1 集未选中且已看，展示柔和已看勾；第 2 集正在播，展示琥珀选中勾
+    expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsOneWidget);
   });
 }

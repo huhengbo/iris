@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import quote, urlsplit
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 from httpx2 import Response
 
 from app.api.playback import RedactPlayTokens
+from app.config import AppConfig
 from app.playback.throttle import MAX_REQUESTS_PER_MINUTE
 from tests.conftest import ADMIN_PASSWORD, FakeClock, bearer, login
 from tests.fake_cloud115 import FakeCloud115
@@ -767,6 +769,71 @@ def test_progress_is_validated_and_scoped(client: TestClient, catalog: dict[str,
         ).status_code
         == 401
     )
+
+
+def test_remove_item_resume_clears_recent_and_continue_but_keeps_watched_and_events(
+    client: TestClient, config: AppConfig, catalog: dict[str, int]
+) -> None:
+    admin = fresh_admin(client)
+    earth = movie(client)
+    movie_ticket = issue(client, admin, item_id=earth["id"], player="builtin")
+    # 看到 90% 触发已看，再重看到一半产生续播位置
+    assert progress(client, admin, movie_ticket["playable_id"], 6600, 7200).status_code == 204
+    assert progress(client, admin, movie_ticket["playable_id"], 1800, 7200).status_code == 204
+
+    eps = episodes(client)
+    series_id = find(client, "三体")["id"]
+    ep1_ticket = issue(client, admin, episode_id=eps["S01E01"]["id"], player="builtin")
+    ep2_ticket = issue(client, admin, episode_id=eps["S01E02"]["id"], player="builtin")
+    assert progress(client, admin, ep1_ticket["playable_id"], 900, 2700).status_code == 204
+    assert progress(client, admin, ep2_ticket["playable_id"], 1200, 2700).status_code == 204
+
+    assert {row["item"]["id"] for row in get(client, admin, "/home")["recent"]} == {
+        earth["id"],
+        series_id,
+    }
+    movie_hubs = {h["kind"]: h for h in get(client, admin, f"/libraries/{catalog['movies']}/hubs")}
+    series_hubs = {h["kind"]: h for h in get(client, admin, f"/libraries/{catalog['series']}/hubs")}
+    assert [row["item"]["id"] for row in movie_hubs["continue"]["recent"]] == [earth["id"]]
+    assert [row["item"]["id"] for row in series_hubs["continue"]["recent"]] == [series_id]
+
+    # 移除电影的继续观看：204，位置与最近播放时间清空，但保留已看标记与 play_event 历史
+    resp = client.delete(f"/api/items/{earth['id']}/resume", headers=admin)
+    assert resp.status_code == 204
+    assert [row["item"]["id"] for row in get(client, admin, "/home")["recent"]] == [series_id]
+    movie_hubs_after = {
+        h["kind"]: h for h in get(client, admin, f"/libraries/{catalog['movies']}/hubs")
+    }
+    assert "continue" not in movie_hubs_after
+    earth_detail = movie(client)
+    assert earth_detail["watched"] is True
+    assert earth_detail["progress"] is None
+
+    # 移除剧集的继续观看：整部剧所有集的位置与最近播放时间清空
+    resp = client.delete(f"/api/items/{series_id}/resume", headers=admin)
+    assert resp.status_code == 204
+    assert get(client, admin, "/home")["recent"] == []
+    series_hubs_after = {
+        h["kind"]: h for h in get(client, admin, f"/libraries/{catalog['series']}/hubs")
+    }
+    assert "continue" not in series_hubs_after
+    assert episodes(client)["S01E01"]["progress"] is None
+    assert episodes(client)["S01E02"]["progress"] is None
+
+    with sqlite3.connect(config.database_path) as connection:
+        states = connection.execute(
+            "SELECT position, last_played_at, watched FROM playback_state"
+        ).fetchall()
+        assert all(pos is None and played_at is None for pos, played_at, _ in states)
+        event_count = connection.execute("SELECT COUNT(*) FROM play_event").fetchone()[0]
+        assert event_count == 3
+
+    # 权限与不存在条目校验
+    _, login_alice = alice_with(client, [catalog["movies"]])
+    alice = login_alice()
+    assert client.delete(f"/api/items/{series_id}/resume", headers=alice).status_code == 404
+    assert client.delete("/api/items/999999/resume", headers=admin).status_code == 404
+    assert client.delete(f"/api/items/{earth['id']}/resume").status_code == 401
 
 
 # ---- 流信息 ----

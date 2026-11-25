@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/motion.dart';
@@ -9,8 +10,10 @@ import '../../core/api/api_error.dart';
 import '../../core/widgets/ai_wait_indicator.dart';
 import '../../core/widgets/api_error_style.dart';
 import '../../core/widgets/focus_ring.dart';
+import '../../core/widgets/snack.dart';
 import '../library/browse_api.dart';
 import '../library/poster_card.dart';
+import '../watchlist/watchlist_api.dart';
 import 'ai_chat_models.dart';
 import 'ai_markdown.dart';
 
@@ -381,8 +384,8 @@ class _StepRow extends StatelessWidget {
 }
 
 /// 条目卡片：一排可横向滚动的海报卡（宽 96），逐张淡入 + 上移 4%，间隔 40ms；
-/// 超过 [aiMaxCards] 部时最后一张是「查看全部 N 部」，进入搜索结果。
-class AiItemRow extends StatelessWidget {
+/// 超过 [aiMaxCards] 部时最后一张是「查看全部 N 部」，进入搜索结果；底部提供「全部加入稍后观看」快捷操作。
+class AiItemRow extends ConsumerStatefulWidget {
   const AiItemRow({
     super.key,
     required this.items,
@@ -402,46 +405,134 @@ class AiItemRow extends StatelessWidget {
   static const _vertical = 8.0;
 
   @override
+  ConsumerState<AiItemRow> createState() => _AiItemRowState();
+}
+
+class _AiItemRowState extends ConsumerState<AiItemRow> {
+  bool _busy = false;
+  bool _added = false;
+
+  @override
+  void didUpdateWidget(covariant AiItemRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.items != widget.items) {
+      _added = false;
+    }
+  }
+
+  Future<void> _addAllToWatchlist() async {
+    if (_busy || widget.items.isEmpty) return;
+    setState(() => _busy = true);
+    final api = ref.read(watchlistApiProvider);
+    var added = 0;
+    Object? lastError;
+    for (final item in widget.items) {
+      try {
+        await api.setWatchlisted(item.id, watchlisted: true);
+        added++;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (added > 0) {
+      ref
+        ..invalidate(homeFeedProvider)
+        ..invalidate(watchlistProvider)
+        ..invalidate(libraryItemsProvider);
+      for (final item in widget.items) {
+        ref.invalidate(mediaDetailProvider(item.id));
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (added == widget.items.length) _added = true;
+    });
+    if (added == widget.items.length) {
+      showSnack(context, '已将 $added 部加入稍后观看');
+    } else if (added > 0) {
+      showSnack(context, '已将 $added 部加入稍后观看，部分加入失败');
+    } else if (lastError != null) {
+      showApiErrorSnack(context, lastError);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scaler = MediaQuery.textScalerOf(context);
-    final posterHeight = cardWidth * 3 / 2;
+    final posterHeight = AiItemRow.cardWidth * 3 / 2;
     final textHeight = PosterCard.textLines(subtitle: false)
         .map(scaler.scale)
         .fold(0.0, (a, b) => a + b);
-    final more = items.length > aiMaxCards;
-    final shown = more ? items.take(aiMaxCards).toList() : items;
-    return SizedBox(
-      height: posterHeight + 8 + textHeight.ceilToDouble() + _vertical * 2 + 2,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(
-          horizontal: aiGutter,
-          vertical: _vertical,
+    final more = widget.items.length > aiMaxCards;
+    final shown = more ? widget.items.take(aiMaxCards).toList() : widget.items;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height:
+              posterHeight +
+              8 +
+              textHeight.ceilToDouble() +
+              AiItemRow._vertical * 2 +
+              2,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(
+              horizontal: aiGutter,
+              vertical: AiItemRow._vertical,
+            ),
+            itemCount: shown.length + (more ? 1 : 0),
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, i) {
+              final Widget card = i < shown.length
+                  ? PosterCard(
+                      media: shown[i],
+                      heroTag: '${widget.heroScope}:${shown[i].id}',
+                    )
+                  : _ViewAllCard(
+                      total: widget.items.length,
+                      height: posterHeight,
+                      onTap: () => context.go(
+                        widget.question.isEmpty
+                            ? '/search'
+                            : '/search?q=${Uri.encodeQueryComponent(widget.question)}',
+                      ),
+                    );
+              return SizedBox(
+                key: ValueKey(i < shown.length ? shown[i].id : 'all'),
+                width: AiItemRow.cardWidth,
+                child: widget.animate
+                    ? AiCardReveal(index: i, child: card)
+                    : card,
+              );
+            },
+          ),
         ),
-        itemCount: shown.length + (more ? 1 : 0),
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
-        itemBuilder: (context, i) {
-          final Widget card = i < shown.length
-              ? PosterCard(
-                  media: shown[i],
-                  heroTag: '$heroScope:${shown[i].id}',
-                )
-              : _ViewAllCard(
-                  total: items.length,
-                  height: posterHeight,
-                  onTap: () => context.go(
-                    question.isEmpty
-                        ? '/search'
-                        : '/search?q=${Uri.encodeQueryComponent(question)}',
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: aiGutter),
+          child: TextButton.icon(
+            onPressed: _busy ? null : _addAllToWatchlist,
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              foregroundColor: _added ? CinemaColors.amber : CinemaColors.text2,
+              textStyle: Theme.of(context).textTheme.labelMedium,
+            ),
+            icon: _busy
+                ? const SizedBox.square(
+                    dimension: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    _added ? Icons.bookmark : Icons.bookmark_add_outlined,
+                    size: 16,
                   ),
-                );
-          return SizedBox(
-            key: ValueKey(i < shown.length ? shown[i].id : 'all'),
-            width: cardWidth,
-            child: animate ? AiCardReveal(index: i, child: card) : card,
-          );
-        },
-      ),
+            label: Text(_added ? '已加入稍后观看' : '全部加入稍后观看'),
+          ),
+        ),
+      ],
     );
   }
 }

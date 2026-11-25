@@ -26,6 +26,7 @@ enum ItemAction {
   unfavorite(Icons.favorite, '取消收藏'),
   watchlist(Icons.bookmark_border, '加入稍后观看'),
   unwatchlist(Icons.bookmark, '移出稍后观看'),
+  removeResume(Icons.visibility_off_outlined, '从继续观看移除'),
   rematch(Icons.find_replace, '修正匹配'),
   unmatch(Icons.link_off, '取消匹配'),
   refresh(Icons.refresh, '刷新元数据'),
@@ -163,12 +164,14 @@ Future<ItemAction?> showItemActionsMenu(
   required MediaDetail detail,
   required bool admin,
   bool withWatchlist = false,
+  bool withRemoveResume = false,
 }) {
   final movie = detail.card.kind == MediaKind.movie;
   final common = [
     detail.favorite ? ItemAction.unfavorite : ItemAction.favorite,
     if (withWatchlist)
       detail.watchlisted ? ItemAction.unwatchlist : ItemAction.watchlist,
+    if (withRemoveResume) ItemAction.removeResume,
     ItemAction.addToPlaylist,
     ItemAction.info,
   ];
@@ -218,6 +221,7 @@ Future<void> showItemActions(
   MediaDetail? detail,
   bool inDetail = false,
   bool withWatchlist = false,
+  bool withRemoveResume = false,
 }) async {
   final media = detail ?? await _loadDetail(context, ref, item);
   if (media == null || !context.mounted) return;
@@ -231,6 +235,7 @@ Future<void> showItemActions(
     detail: media,
     admin: admin,
     withWatchlist: withWatchlist,
+    withRemoveResume: withRemoveResume,
   );
   if (action == null || !context.mounted) return;
   final dio = ref.read(apiClientProvider);
@@ -262,6 +267,8 @@ Future<void> showItemActions(
         final watchlisted = action == ItemAction.watchlist;
         await setWatchlisted(ref, item.id, watchlisted: watchlisted);
         toast(watchlisted ? '已加入稍后观看' : '已移出稍后观看');
+      case ItemAction.removeResume:
+        await hideFromContinueWatching(context, ref, item);
       case ItemAction.rematch:
         await context.push('/settings/manage/items/${item.id}');
       case ItemAction.editSubtitles:

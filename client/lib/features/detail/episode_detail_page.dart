@@ -28,6 +28,7 @@ import '../play/playlist_actions.dart';
 import '../subtitles/edit_subtitles_dialog.dart';
 import 'detail_page.dart';
 import 'episode_admin.dart';
+import 'media_info_view.dart';
 import 'people_row.dart';
 import 'stream_rows.dart';
 
@@ -387,6 +388,9 @@ class _Info extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final name = episode.name;
     final airDate = DateTime.tryParse(episode.airDate ?? '');
+    final selectedVersion =
+        episode.versions.where((v) => v.id == versionId).firstOrNull ??
+        episode.versions.firstOrNull;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -433,6 +437,9 @@ class _Info extends StatelessWidget {
           ],
           certification: media.contentRating,
           rating: episode.rating,
+          techSpecs: selectedVersion == null
+              ? const []
+              : versionTechBadges(selectedVersion),
           trailing: _endsAt(episode),
         ),
         if (episode.overview case final overview? when overview.isNotEmpty) ...[

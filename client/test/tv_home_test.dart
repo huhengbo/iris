@@ -1,12 +1,21 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:iris/app/theme.dart';
 import 'package:iris/app/tv.dart';
+import 'package:iris/core/providers.dart';
+import 'package:iris/core/widgets/skeleton.dart';
 import 'package:iris/features/library/browse_api.dart';
 import 'package:iris/features/tv/tv_home_page.dart';
 import 'package:iris/features/tv/tv_widgets.dart';
 import 'package:iris/main.dart';
+
+import 'support/fake_api.dart';
 
 /// 电视首页：行顺序与手机一致，精选轮播不再出现，默认焦点在第一行第一张卡。
 
@@ -88,6 +97,7 @@ Future<void> pumpHome(WidgetTester tester, Map<String, Object?> json) async {
             ...card(id, '详情'),
             'overview': '简介',
             'content_rating': null,
+            'logo': <Object>[],
             'studios': <Object>[],
             'countries': <Object>[],
             'ratings': <Object>[],
@@ -238,5 +248,150 @@ void main() {
     final shelfLeft = tester.getTopLeft(find.byType(TvShelf).first).dx;
     final cardLeft = tester.getTopLeft(find.byType(TvStill).first).dx;
     expect(cardLeft - shelfLeft, greaterThanOrEqualTo(14));
+  });
+
+  testWidgets('shows structured skeleton respecting overscan while loading', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final pending = Completer<HomeFeed>();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [homeFeedProvider.overrideWith((ref) => pending.future)],
+        child: MaterialApp(
+          theme: buildTheme(),
+          shortcuts: appShortcuts,
+          builder: televisionBuilder,
+          home: const TvHomePage(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.bySemanticsLabel('正在加载'), findsOneWidget);
+    expect(find.byType(Skeleton), findsWidgets);
+    // 过扫描安全区（48dp）被尊重
+    final firstSkeleton = tester.getTopLeft(find.byType(Skeleton).first);
+    expect(firstSkeleton.dx, greaterThanOrEqualTo(TvLayout.overscan.left));
+  });
+
+  testWidgets('quick action sheet works via menu/info keys and long press', (
+    tester,
+  ) async {
+    final api = FakeAdminApi()
+      ..on('PUT /api/items/1/watched', null, status: 204)
+      ..on('PUT /api/items/2/watchlist', null, status: 204)
+      ..on('DELETE /api/items/1/resume', null, status: 204);
+    final dio = Dio(BaseOptions(baseUrl: 'http://test'))
+      ..httpClientAdapter = api;
+
+    tester.view.physicalSize = const Size(1920, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, _) => const Scaffold(body: TvHomePage()),
+        ),
+        GoRoute(
+          path: '/item/:id',
+          builder: (_, state) =>
+              Scaffold(body: Text('详情页 ${state.pathParameters['id']}')),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(dio),
+          apiBaseUrlProvider.overrideWithValue('http://test'),
+          homeFeedProvider.overrideWith(
+            (ref) async => HomeFeed.fromJson(
+              homeFeed(recent: [play(1, '三体')], watchlist: [card(2, '沙丘')]),
+              'http://test',
+            ),
+          ),
+          mediaDetailProvider.overrideWith(
+            (ref, id) async => MediaDetail.fromJson({
+              ...card(id, id == 1 ? '三体' : '沙丘'),
+              'overview': '简介',
+              'content_rating': null,
+              'logo': <Object>[],
+              'studios': <Object>[],
+              'countries': <Object>[],
+              'ratings': <Object>[],
+              'favorite': false,
+              'directors': <Object>[],
+              'writers': <Object>[],
+              'cast': <Object>[],
+              'versions': <Object>[],
+              'seasons': <Object>[],
+              'next_episode': null,
+              'progress': null,
+              'watchlisted': false,
+            }, 'http://test'),
+          ),
+        ],
+        child: MaterialApp.router(
+          theme: buildTheme(),
+          shortcuts: appShortcuts,
+          builder: televisionBuilder,
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 默认焦点在 TvStill（三体），按菜单键弹出快捷操作弹层并包含「从继续观看移除」
+    await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+    await tester.pumpAndSettle();
+    expect(find.text('标记已看'), findsOneWidget);
+    expect(find.text('加入稍后观看'), findsOneWidget);
+    expect(find.text('从继续观看移除'), findsOneWidget);
+    expect(find.text('查看详情'), findsOneWidget);
+
+    await tester.tap(find.text('从继续观看移除'));
+    await tester.pumpAndSettle();
+    expect(api.requests, contains('DELETE /api/items/1/resume'));
+    expect(find.text('已从继续观看移除'), findsOneWidget);
+
+    // 长按 TvStill 打开弹层并执行标记已看
+    await tester.longPress(find.byType(TvStill).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('标记已看'));
+    await tester.pumpAndSettle();
+    expect(api.requests, contains('PUT /api/items/1/watched'));
+    expect(find.text('已标记为已看'), findsOneWidget);
+
+    // 按下键移到 TvPoster（沙丘），按信息键打开弹层，不含「从继续观看移除」
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(focusedOn(tester, '沙丘'), isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.info);
+    await tester.pumpAndSettle();
+    expect(find.text('标记已看'), findsOneWidget);
+    expect(find.text('加入稍后观看'), findsOneWidget);
+    expect(find.text('从继续观看移除'), findsNothing);
+    expect(find.text('查看详情'), findsOneWidget);
+
+    await tester.tap(find.text('加入稍后观看'));
+    await tester.pumpAndSettle();
+    expect(api.requests, contains('PUT /api/items/2/watchlist'));
+    expect(find.text('已加入稍后观看'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.info);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查看详情'));
+    await tester.pumpAndSettle();
+    expect(find.text('详情页 2'), findsOneWidget);
   });
 }

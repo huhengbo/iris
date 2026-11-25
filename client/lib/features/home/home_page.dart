@@ -7,14 +7,11 @@ import '../../app/shell.dart';
 import '../../core/widgets/rail_scroller.dart';
 import '../../app/theme.dart';
 import '../../core/api/api_error.dart';
-import '../../core/api/paging.dart';
 import '../../core/widgets/async_view.dart';
-import '../../core/widgets/focus_tile.dart';
 import '../../core/widgets/skeleton.dart';
-import '../../core/format.dart';
 import '../ai/ai_entry_button.dart';
-import '../library/art_image.dart';
 import '../library/browse_api.dart';
+import '../library/continue_watching_card.dart';
 import '../library/library_hub_shelf.dart';
 import '../library/library_recommend_tab.dart' show queryForHub;
 import '../library/poster_card.dart';
@@ -183,13 +180,16 @@ class _HomeContent extends StatelessWidget {
               height: m.railHeight(
                 context,
                 art: m.stillWidth * 9 / 16,
-                lines: _RecentCard.textLines,
+                lines: ContinueWatchingCard.textLines,
               ),
               children: [
                 for (final recent in feed.recent)
                   SizedBox(
                     width: m.stillWidth,
-                    child: _RecentCard(recent: recent),
+                    child: ContinueWatchingCard(
+                      recent: recent,
+                      heroTag: 'recent:${recent.item.id}',
+                    ),
                   ),
               ],
             ),

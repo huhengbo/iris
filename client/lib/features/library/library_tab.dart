@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/motion.dart';
 import '../../app/shell.dart';
 import '../../app/theme.dart';
 import '../../app/tv.dart';
@@ -13,10 +15,13 @@ import '../../core/widgets/confirm_dialog.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/focus_ring.dart';
 import '../../core/widgets/picker_sheet.dart';
+import '../../core/widgets/skeleton.dart';
 import '../../core/widgets/snack.dart';
 import '../../core/widgets/text_prompt.dart';
 import '../admin/catalog_api.dart';
 import '../auth/auth_controller.dart';
+import '../detail/media_actions.dart';
+import '../play/play_api.dart';
 import 'art_image.dart';
 import 'browse_api.dart';
 import 'library_preferences.dart';
@@ -47,15 +52,34 @@ class _LibraryBrowseTabState extends ConsumerState<LibraryBrowseTab> {
   /// 「全选」：选中当前筛选出的全部条目（包括还没加载的），批量操作按筛选条件提交
   bool _allMatching = false;
   bool _busy = false;
+  String? _azPreview;
   final _scroll = ScrollController();
 
   LibraryQuery get _query =>
       LibraryQuery.fromUri(widget.libraryId, widget.params);
 
   @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_onKey);
+  }
+
+  @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
     _scroll.dispose();
     super.dispose();
+  }
+
+  bool _onKey(KeyEvent event) {
+    if (!mounted || !_selectionMode || _busy) return false;
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.escape) {
+      return false;
+    }
+    if (!(ModalRoute.of(context)?.isCurrent ?? true)) return false;
+    _exitSelection();
+    return true;
   }
 
   void _exitSelection() => setState(() {
@@ -169,6 +193,12 @@ class _LibraryBrowseTabState extends ConsumerState<LibraryBrowseTab> {
     _update(query.copyWith(letter: (query.letter == letter ? null : letter,)));
   }
 
+  void _selectLetter(String letter) {
+    final query = _query;
+    if (query.letter == letter) return;
+    _update(query.copyWith(letter: (letter,)));
+  }
+
   void _setViewMode(LibraryViewMode mode) async {
     try {
       await ref.read(libraryViewModeProvider.notifier).set(mode);
@@ -207,82 +237,111 @@ class _LibraryBrowseTabState extends ConsumerState<LibraryBrowseTab> {
     return Column(
       children: [
         Expanded(
-          child: Row(
+          child: Stack(
             children: [
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: () async {
-                    ref.invalidate(libraryProvider(widget.libraryId));
-                    final _ = await ref.refresh(
-                      libraryItemsProvider(_query).future,
-                    );
-                  },
-                  child: CustomScrollView(
-                    controller: _scroll,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: _Toolbar(
-                          query: query,
-                          genres: widget.detail.genres,
-                          years: widget.detail.years,
-                          isAdmin: isAdmin,
-                          mode: mode,
-                          gutter: gutter,
-                          selectionMode: _selectionMode,
-                          canSelect:
-                              isAdmin &&
-                              !isTelevision(context) &&
-                              (total > 0 || _selectionMode),
-                          selectionBusy: _busy,
-                          onToggleSelection: _selectionMode
-                              ? _exitSelection
-                              : () => setState(() => _selectionMode = true),
-                          onChanged: _update,
-                          onFilter: _pickFilter,
-                          onViewMode: _setViewMode,
-                        ),
+              Row(
+                children: [
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: () async {
+                        ref.invalidate(libraryProvider(widget.libraryId));
+                        final _ = await ref.refresh(
+                          libraryItemsProvider(_query).future,
+                        );
+                      },
+                      child: CustomScrollView(
+                        controller: _scroll,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        slivers: [
+                          SliverToBoxAdapter(
+                            child: _Toolbar(
+                              query: query,
+                              genres: widget.detail.genres,
+                              years: widget.detail.years,
+                              isAdmin: isAdmin,
+                              mode: mode,
+                              gutter: gutter,
+                              selectionMode: _selectionMode,
+                              canSelect:
+                                  isAdmin &&
+                                  !isTelevision(context) &&
+                                  (total > 0 || _selectionMode),
+                              selectionBusy: _busy,
+                              onToggleSelection: _selectionMode
+                                  ? _exitSelection
+                                  : () => setState(() => _selectionMode = true),
+                              onChanged: _update,
+                              onFilter: _pickFilter,
+                              onViewMode: _setViewMode,
+                            ),
+                          ),
+                          if (mode == LibraryViewMode.grid)
+                            PagedPosterGrid(
+                              value: items,
+                              heroPrefix: 'library:${widget.libraryId}',
+                              padding: EdgeInsets.fromLTRB(
+                                gutter,
+                                8,
+                                gutter,
+                                0,
+                              ),
+                              subtitle: (media) => _subtitle(media, query.sort),
+                              onRetry: () =>
+                                  ref.invalidate(libraryItemsProvider(query)),
+                              onLoadMore: notifier.loadMore,
+                              onRetryMore: notifier.retryMore,
+                              selectionMode: _selectionMode,
+                              selectedIds: _allMatching
+                                  ? {for (final media in loaded) media.id}
+                                  : _selected,
+                              onSelected: (id) => _toggleSelected(id, loaded),
+                              empty: empty,
+                            )
+                          else
+                            _MediaList(
+                              value: items,
+                              gutter: gutter,
+                              heroPrefix: 'library:${widget.libraryId}',
+                              selectionMode: _selectionMode,
+                              selectedIds: _allMatching
+                                  ? {for (final media in loaded) media.id}
+                                  : _selected,
+                              onSelected: (id) => _toggleSelected(id, loaded),
+                              onLoadMore: notifier.loadMore,
+                              onRetry: () =>
+                                  ref.invalidate(libraryItemsProvider(query)),
+                              onRetryMore: notifier.retryMore,
+                              empty: empty,
+                            ),
+                        ],
                       ),
-                      if (mode == LibraryViewMode.grid)
-                        PagedPosterGrid(
-                          value: items,
-                          heroPrefix: 'library:${widget.libraryId}',
-                          padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 0),
-                          subtitle: (media) => _subtitle(media, query.sort),
-                          onRetry: () =>
-                              ref.invalidate(libraryItemsProvider(query)),
-                          onLoadMore: notifier.loadMore,
-                          onRetryMore: notifier.retryMore,
-                          selectionMode: _selectionMode,
-                          selectedIds: _allMatching
-                              ? {for (final media in loaded) media.id}
-                              : _selected,
-                          onSelected: (id) => _toggleSelected(id, loaded),
-                          empty: empty,
-                        )
-                      else
-                        _MediaList(
-                          value: items,
-                          gutter: gutter,
-                          heroPrefix: 'library:${widget.libraryId}',
-                          selectionMode: _selectionMode,
-                          selectedIds: _allMatching
-                              ? {for (final media in loaded) media.id}
-                              : _selected,
-                          onSelected: (id) => _toggleSelected(id, loaded),
-                          onLoadMore: notifier.loadMore,
-                          onRetry: () =>
-                              ref.invalidate(libraryItemsProvider(query)),
-                          onRetryMore: notifier.retryMore,
-                          empty: empty,
-                        ),
-                    ],
+                    ),
+                  ),
+                  // 按名称排序时右侧是 A-Z 跳转条；中文片名归到「#」
+                  if (query.sort == SortKey.name)
+                    _AzBar(
+                      active: _azPreview ?? query.letter,
+                      onSelected: _updateLetter,
+                      onDragSelect: _selectLetter,
+                      onPreviewChanged: (letter) {
+                        if (_azPreview != letter) {
+                          setState(() => _azPreview = letter);
+                        }
+                      },
+                    ),
+                ],
+              ),
+              if (_azPreview case final letter?)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: Center(
+                      child: _AzPreviewBubble(
+                        key: const ValueKey('az-preview-bubble'),
+                        letter: letter,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              // 按名称排序时右侧是 A-Z 跳转条；中文片名归到「#」
-              if (query.sort == SortKey.name)
-                _AzBar(active: query.letter, onSelected: _updateLetter),
             ],
           ),
         ),
@@ -758,12 +817,20 @@ class _MenuChip<T> extends StatelessWidget {
   }
 }
 
-/// A-Z 跳转条：字母 + 「#」（非拉丁字母）。点当前字母取消跳转。
-class _AzBar extends StatelessWidget {
-  const _AzBar({required this.active, required this.onSelected});
+/// A-Z 跳转条：字母 + 「#」（非拉丁字母）。支持点击切换，也支持按住上下滑动连续定位，
+/// 拖动期间通知外部显示大字母气泡预览。
+class _AzBar extends StatefulWidget {
+  const _AzBar({
+    required this.active,
+    required this.onSelected,
+    required this.onDragSelect,
+    required this.onPreviewChanged,
+  });
 
   final String? active;
   final ValueChanged<String> onSelected;
+  final ValueChanged<String> onDragSelect;
+  final ValueChanged<String?> onPreviewChanged;
 
   static const _letters = [..._alphabet, '#'];
 
@@ -797,43 +864,115 @@ class _AzBar extends StatelessWidget {
   ];
 
   @override
+  State<_AzBar> createState() => _AzBarState();
+}
+
+class _AzBarState extends State<_AzBar> {
+  String? _dragging;
+
+  String _letterAt(double localDy, double height) {
+    if (height <= 0) return _AzBar._letters.first;
+    final index = ((localDy / height) * _AzBar._letters.length).floor().clamp(
+      0,
+      _AzBar._letters.length - 1,
+    );
+    return _AzBar._letters[index];
+  }
+
+  void _updateDrag(double localDy, double height) {
+    final letter = _letterAt(localDy, height);
+    if (letter == _dragging) return;
+    _dragging = letter;
+    widget.onPreviewChanged(letter);
+    widget.onDragSelect(letter);
+  }
+
+  void _endDrag() {
+    if (_dragging == null) return;
+    _dragging = null;
+    widget.onPreviewChanged(null);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Semantics(
       label: '首字母跳转',
       child: SizedBox(
         width: 26,
-        child: Column(
-          children: [
-            for (final letter in _letters)
-              Expanded(
-                child: Tooltip(
-                  message: letter == '#' ? '其他' : letter,
-                  waitDuration: const Duration(milliseconds: 500),
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => onSelected(letter),
-                    child: Center(
-                      child: Text(
-                        letter,
-                        style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                          color: letter == active
-                              ? CinemaColors.amber
-                              : CinemaColors.text2,
-                          fontWeight: letter == active ? FontWeight.w700 : null,
+        child: LayoutBuilder(
+          builder: (context, constraints) => GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragStart: (d) =>
+                _updateDrag(d.localPosition.dy, constraints.maxHeight),
+            onVerticalDragUpdate: (d) =>
+                _updateDrag(d.localPosition.dy, constraints.maxHeight),
+            onVerticalDragEnd: (_) => _endDrag(),
+            onVerticalDragCancel: _endDrag,
+            child: Column(
+              children: [
+                for (final letter in _AzBar._letters)
+                  Expanded(
+                    child: Tooltip(
+                      message: letter == '#' ? '其他' : letter,
+                      waitDuration: const Duration(milliseconds: 500),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => widget.onSelected(letter),
+                        child: Center(
+                          child: Text(
+                            letter,
+                            style: Theme.of(context).textTheme.labelSmall!
+                                .copyWith(
+                                  color: letter == widget.active
+                                      ? CinemaColors.amber
+                                      : CinemaColors.text2,
+                                  fontWeight: letter == widget.active
+                                      ? FontWeight.w700
+                                      : null,
+                                ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-/// 列表视图：小海报、片名、年份、时长、评分和已看状态。分页逻辑和网格一致。
+class _AzPreviewBubble extends StatelessWidget {
+  const _AzPreviewBubble({super.key, required this.letter});
+
+  final String letter;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: Motion.short,
+      child: Container(
+        key: ValueKey(letter),
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          color: CinemaColors.scrim,
+          borderRadius: BorderRadius.circular(CinemaRadius.dialog),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          letter,
+          style: Theme.of(context).textTheme.headlineMedium!
+              .copyWith(color: CinemaColors.text0, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+}
+
+/// 列表视图：小海报、片名、年份、类型、未看集数、时长、评分、已看切换与快捷菜单。分页逻辑和网格一致。
 class _MediaList extends StatelessWidget {
   const _MediaList({
     required this.value,
@@ -871,10 +1010,11 @@ class _MediaList extends StatelessWidget {
                 onRetry: onRetry,
               ),
             )
-          : const SliverPadding(
-              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              sliver: SliverToBoxAdapter(
-                child: Center(child: CircularProgressIndicator()),
+          : SliverPadding(
+              padding: EdgeInsets.symmetric(horizontal: gutter, vertical: 8),
+              sliver: SliverList.builder(
+                itemCount: 8,
+                itemBuilder: (_, _) => const _MediaListSkeletonRow(),
               ),
             );
     }
@@ -894,81 +1034,13 @@ class _MediaList extends StatelessWidget {
           WidgetsBinding.instance.addPostFrameCallback((_) => onLoadMore());
         }
         final media = list.items[index];
-        return Padding(
-          padding: EdgeInsets.fromLTRB(gutter, 4, gutter, 4),
-          child: FocusRing(
-            child: InkWell(
-              borderRadius: BorderRadius.circular(CinemaRadius.card),
-              onTap: selectionMode
-                  ? () => onSelected(media.id)
-                  : () => openDetail(context, media, '$heroPrefix:${media.id}'),
-              child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(CinemaRadius.small),
-                      child: SizedBox(
-                        width: 48,
-                        height: 72,
-                        child: ArtImage(
-                          art: media.poster,
-                          icon: Icons.movie_outlined,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            media.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            [
-                              if (media.year != null) '${media.year}',
-                              if (media.runtime != null)
-                                formatMinutes(media.runtime!),
-                              if (media.rating != null && media.rating! > 0)
-                                '${media.rating!.toStringAsFixed(1)} 分',
-                            ].join(' · '),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall!
-                                .copyWith(color: CinemaColors.text2),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (selectionMode)
-                      Icon(
-                        selectedIds.contains(media.id)
-                            ? Icons.check_box
-                            : Icons.check_box_outline_blank,
-                        color: selectedIds.contains(media.id)
-                            ? CinemaColors.amber
-                            : CinemaColors.text2,
-                      )
-                    else if (media.watched)
-                      const Tooltip(
-                        message: '已看',
-                        child: Icon(
-                          Icons.check_circle,
-                          size: 20,
-                          color: CinemaColors.amber,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+        return _MediaListRow(
+          media: media,
+          gutter: gutter,
+          heroPrefix: heroPrefix,
+          selectionMode: selectionMode,
+          selected: selectedIds.contains(media.id),
+          onSelected: () => onSelected(media.id),
         );
       },
     );
@@ -1007,6 +1079,241 @@ class _MediaList extends StatelessWidget {
         child: Text(
           '共 ${list.total} 部',
           style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ),
+    );
+  }
+}
+
+class _MediaListSkeletonRow extends StatelessWidget {
+  const _MediaListSkeletonRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '正在加载',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 48,
+                height: 72,
+                child: Skeleton(
+                  borderRadius: BorderRadius.circular(CinemaRadius.small),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FractionallySizedBox(
+                      widthFactor: 0.55,
+                      child: SizedBox(
+                        height: 14,
+                        child: Skeleton(
+                          borderRadius: BorderRadius.circular(
+                            CinemaRadius.tiny,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    FractionallySizedBox(
+                      widthFactor: 0.35,
+                      child: SizedBox(
+                        height: 12,
+                        child: Skeleton(
+                          borderRadius: BorderRadius.circular(
+                            CinemaRadius.tiny,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MediaListRow extends ConsumerStatefulWidget {
+  const _MediaListRow({
+    required this.media,
+    required this.gutter,
+    required this.heroPrefix,
+    required this.selectionMode,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final MediaCard media;
+  final double gutter;
+  final String heroPrefix;
+  final bool selectionMode;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  ConsumerState<_MediaListRow> createState() => _MediaListRowState();
+}
+
+class _MediaListRowState extends ConsumerState<_MediaListRow> {
+  bool _watchedBusy = false;
+  bool? _pendingWatched;
+
+  bool get _watched => _pendingWatched ?? widget.media.watched;
+
+  @override
+  void didUpdateWidget(covariant _MediaListRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_pendingWatched != null && widget.media.watched == _pendingWatched) {
+      _pendingWatched = null;
+    }
+  }
+
+  Future<void> _toggleWatched() async {
+    if (_watchedBusy) return;
+    final next = !_watched;
+    setState(() {
+      _watchedBusy = true;
+      _pendingWatched = next;
+    });
+    final ok = await markWatched(
+      context,
+      ref,
+      scope: WatchedScope.item,
+      id: widget.media.id,
+      watched: next,
+      itemId: widget.media.id,
+    );
+    if (!mounted) return;
+    setState(() {
+      _watchedBusy = false;
+      if (!ok) _pendingWatched = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = widget.media;
+    final tv = isTelevision(context);
+    final info = [
+      if (media.year != null) '${media.year}',
+      if (media.genres.isNotEmpty) media.genres.take(2).join(' / '),
+      if (media.kind == MediaKind.series &&
+          !_watched &&
+          (media.unwatchedCount ?? 0) > 0)
+        '未看 ${media.unwatchedCount} 集',
+      if (media.runtime != null) formatMinutes(media.runtime!),
+      if (media.rating != null && media.rating! > 0)
+        '${media.rating!.toStringAsFixed(1)} 分',
+    ].join(' · ');
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(widget.gutter, 4, widget.gutter, 4),
+      child: FocusRing(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(CinemaRadius.card),
+          onTap: widget.selectionMode
+              ? widget.onSelected
+              : () => openDetail(
+                  context,
+                  media,
+                  '${widget.heroPrefix}:${media.id}',
+                ),
+          onLongPress: widget.selectionMode
+              ? null
+              : () => openCardActions(context, ref, media),
+          onSecondaryTapUp: widget.selectionMode || tv
+              ? null
+              : (_) => openCardActions(context, ref, media),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(CinemaRadius.small),
+                  child: SizedBox(
+                    width: 48,
+                    height: 72,
+                    child: ArtImage(
+                      art: media.poster,
+                      icon: Icons.movie_outlined,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        media.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        info,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall!
+                            .copyWith(color: CinemaColors.text2),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (widget.selectionMode)
+                  Icon(
+                    widget.selected
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
+                    color: widget.selected
+                        ? CinemaColors.amber
+                        : CinemaColors.text2,
+                  )
+                else ...[
+                  IconButton(
+                    tooltip: _watched ? '标记未看' : '标记已看',
+                    onPressed: _watchedBusy ? () {} : _toggleWatched,
+                    icon: _watchedBusy
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            _watched
+                                ? Icons.check_circle
+                                : Icons.check_circle_outline,
+                            size: 20,
+                            color: _watched
+                                ? CinemaColors.amber
+                                : CinemaColors.text2,
+                          ),
+                  ),
+                  IconButton(
+                    tooltip: '更多操作',
+                    onPressed: () => openCardActions(context, ref, media),
+                    icon: const Icon(
+                      Icons.more_horiz,
+                      size: 20,
+                      color: CinemaColors.text2,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );

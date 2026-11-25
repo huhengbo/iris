@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iris/app/theme.dart';
+import 'package:iris/core/widgets/empty_state.dart';
 import 'package:iris/features/admin/activity_page.dart';
+import 'package:iris/features/admin/admin_widgets.dart';
 import 'package:iris/features/admin/alerts_page.dart';
 import 'package:iris/features/admin/logs_page.dart';
 import 'package:iris/features/admin/maintenance_api.dart';
@@ -339,4 +341,68 @@ void main() {
     expect(find.textContaining(':09 · app.sync'), findsOneWidget);
     expect(find.textContaining('T08'), findsNothing);
   });
+
+  testWidgets(
+    'logs page uses adminGridWidth and filters locally by query and level',
+    (tester) async {
+      await pumpAdmin(tester, const LogsPage(), (api) {
+        api.on('GET /api/admin/logs', [
+          {
+            'id': 1,
+            'at': '2026-10-01T08:00:01+00:00',
+            'level': 'info',
+            'module': 'app.auth',
+            'message': '登录成功',
+          },
+          {
+            'id': 2,
+            'at': '2026-10-01T08:00:05+00:00',
+            'level': 'warning',
+            'module': 'app.proxy',
+            'message': '代理连接超时',
+          },
+          {
+            'id': 3,
+            'at': '2026-10-01T08:00:09+00:00',
+            'level': 'error',
+            'module': 'app.sync',
+            'message': '同步失败',
+          },
+        ]);
+      });
+
+      final widthWidget = tester.widget<AdminListWidth>(
+        find.byType(AdminListWidth),
+      );
+      expect(widthWidget.maxWidth, adminGridWidth);
+
+      // 按模块关键词过滤
+      await tester.enterText(find.byType(TextField), 'app.proxy');
+      await tester.pumpAndSettle();
+      expect(find.text('代理连接超时'), findsOneWidget);
+      expect(find.text('登录成功'), findsNothing);
+      expect(find.text('同步失败'), findsNothing);
+
+      // 清除搜索后按级别胶囊过滤
+      await tester.tap(find.byTooltip('清除搜索'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, '错误'));
+      await tester.pumpAndSettle();
+      expect(find.text('同步失败'), findsOneWidget);
+      expect(find.text('代理连接超时'), findsNothing);
+      expect(find.text('登录成功'), findsNothing);
+
+      // 筛选结果为空时展示空状态与「清除筛选」
+      await tester.enterText(find.byType(TextField), '不存在的关键词');
+      await tester.pumpAndSettle();
+      expect(find.byType(EmptyState), findsOneWidget);
+      expect(find.text('没有符合条件的日志'), findsOneWidget);
+
+      await tester.tap(find.text('清除筛选'));
+      await tester.pumpAndSettle();
+      expect(find.text('登录成功'), findsOneWidget);
+      expect(find.text('代理连接超时'), findsOneWidget);
+      expect(find.text('同步失败'), findsOneWidget);
+    },
+  );
 }

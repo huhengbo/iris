@@ -31,11 +31,11 @@ class PeopleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final people = [
-      for (final p in directors) (p, '导演'),
-      for (final p in writers) (p, '编剧'),
-      for (final p in cast) (p, p.character),
-    ];
+    final people = _mergePeople(
+      directors: directors,
+      writers: writers,
+      cast: cast,
+    );
     final scaler = MediaQuery.textScalerOf(context);
     // 宽屏头像放大，片架才不显得空
     final avatar = MediaQuery.sizeOf(context).width >= wideLayoutBreakpoint
@@ -71,8 +71,8 @@ class PeopleRow extends StatelessWidget {
               separatorBuilder: (_, _) =>
                   const SizedBox(width: CinemaSpacing.heading),
               itemBuilder: (context, i) => _PersonChip(
-                person: people[i].$1,
-                role: people[i].$2,
+                person: people[i].person,
+                role: people[i].role,
                 avatar: avatar,
               ),
             ),
@@ -81,6 +81,55 @@ class PeopleRow extends StatelessWidget {
       ],
     );
   }
+}
+
+class _MergedPerson {
+  _MergedPerson(this.person);
+
+  final Credit person;
+  bool directed = false;
+  bool wrote = false;
+  final List<String> characters = [];
+
+  void addCharacter(String? raw) {
+    final text = raw?.trim();
+    if (text == null || text.isEmpty || characters.contains(text)) return;
+    characters.add(text);
+  }
+
+  String? get role {
+    final crew = [if (directed) '导演', if (wrote) '编剧'].join(' / ');
+    final charText = characters.join(' / ');
+    if (crew.isEmpty) {
+      return charText.isEmpty ? null : charText;
+    }
+    if (charText.isEmpty) return crew;
+    return '$crew · 饰 $charText';
+  }
+}
+
+/// 按 personId 保序去重，保留首次出现的头像和位置，并合并导演、编剧与饰演角色。
+List<({Credit person, String? role})> _mergePeople({
+  required List<Credit> directors,
+  required List<Credit> writers,
+  required List<Credit> cast,
+}) {
+  final byId = <int, _MergedPerson>{};
+  _MergedPerson entryFor(Credit p) =>
+      byId.putIfAbsent(p.personId, () => _MergedPerson(p));
+
+  for (final p in directors) {
+    entryFor(p).directed = true;
+  }
+  for (final p in writers) {
+    entryFor(p).wrote = true;
+  }
+  for (final p in cast) {
+    entryFor(p).addCharacter(p.character);
+  }
+  return [
+    for (final entry in byId.values) (person: entry.person, role: entry.role),
+  ];
 }
 
 /// 一位演职人员：64 圆形头像 + 姓名 + 角色。交互同海报卡（[FocusTile]）：

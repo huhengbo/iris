@@ -96,6 +96,12 @@ _SORT_COLUMN: dict[SortKey, str] = {
 }
 
 
+def _rating_label(name: str) -> str:
+    """精简评分来源展示名：去掉插件名末尾的「 元数据」后缀。"""
+    stripped = name.strip()
+    return stripped.removesuffix(" 元数据").strip() or stripped
+
+
 def visible_library_ids(connection: sqlite3.Connection, user: User) -> list[int]:
     """开了「全部资料库」的用户看到全部，其他用户只看到分配给自己的，管理员也一样。
     按资料库的排序返回。"""
@@ -238,13 +244,9 @@ class BrowseQueries:
                 "AND w.item_id = m.id)"
             )
             args.append(self._user_id)
-        if letter == "#":
-            # 非拉丁字母（中文、数字、符号）在名称排序里归到最后一组
-            conditions.append("m.title NOT GLOB '[A-Za-z]*'")
-        elif letter:
-            # SQLite 的 lower 只处理 ASCII，正好和 A-Z 跳转条对应
-            conditions.append("lower(substr(m.title, 1, 1)) = ?")
-            args.append(letter.lower())
+        if letter:
+            conditions.append("title_initial(m.title) = ?")
+            args.append(letter.upper())
         if status == "no_poster":
             conditions.append("m.poster_image_id IS NULL AND m.poster_path IS NULL")
         elif status == "multiple_versions":
@@ -521,8 +523,13 @@ class BrowseQueries:
             progress = row_progress(state) if state else None
         else:
             seasons = self._seasons(item_id)
+        unwatched_counts = self._unwatched_counts([item_id]) if row["kind"] == "series" else {}
         return ItemDetail(
-            card=row_card(row, item_id in self._watched_ids([item_id])),
+            card=row_card(
+                row,
+                item_id in self._watched_ids([item_id]),
+                unwatched_counts.get(item_id),
+            ),
             en_title=row["en_title"],
             release_date=row["release_date"],
             overview=row["overview"],
@@ -578,7 +585,7 @@ class BrowseQueries:
         return [
             Rating(
                 source=str(row["provider_id"]),
-                label=names.get(str(row["provider_id"]), str(row["provider_id"])),
+                label=_rating_label(names.get(str(row["provider_id"]), str(row["provider_id"]))),
                 value=float(row["rating"]),
             )
             for row in ordered
@@ -675,12 +682,19 @@ class BrowseQueries:
         ).fetchall()
         # 同一部作品里又导又演的合成一条
         watched = self._watched_ids([credit["id"] for credit in credits])
+        unwatched_counts = self._unwatched_counts(
+            [credit["id"] for credit in credits if credit["kind"] == "series"]
+        )
         works: dict[int, PersonWork] = {}
         for credit in credits:
             work = works.get(credit["id"])
             roles: list[CreditRole] = [*(work.roles if work else []), credit["role"]]
             character = (work.character if work else None) or credit["character"]
-            card = row_card(credit, credit["id"] in watched)
+            card = row_card(
+                credit,
+                credit["id"] in watched,
+                unwatched_counts.get(credit["id"]),
+            )
             works[credit["id"]] = PersonWork(card, roles, character)
         return PersonDetail(
             id=row["id"],
@@ -890,7 +904,35 @@ class BrowseQueries:
 
     def _cards(self, rows: list[sqlite3.Row]) -> list[ItemCard]:
         watched = self._watched_ids([row["id"] for row in rows])
-        return [row_card(row, row["id"] in watched) for row in rows]
+        unwatched_counts = self._unwatched_counts(
+            [row["id"] for row in rows if row["kind"] == "series"]
+        )
+        return [
+            row_card(row, row["id"] in watched, unwatched_counts.get(row["id"])) for row in rows
+        ]
+
+    def _unwatched_counts(self, series_ids: Sequence[int]) -> dict[int, int]:
+        """统计剧集下有可用文件且当前用户尚未标记已看的单集数（全看完为 0）。"""
+        ids = sorted(set(series_ids))
+        if not ids:
+            return {}
+        marks = ", ".join("?" for _ in ids)
+        rows = self._db.execute(
+            f"""
+            SELECT p.media_item_id AS id,
+                SUM(CASE WHEN COALESCE(s.watched, 0) = 0 THEN 1 ELSE 0 END) AS unwatched_count
+            FROM playable p
+            LEFT JOIN playback_state s
+                ON s.playable_id = p.id AND s.user_id = ?
+            WHERE p.media_item_id IN ({marks})
+                AND p.episode_id IS NOT NULL
+                AND {EPISODE_PLAYABLE}
+            GROUP BY p.media_item_id
+            """,
+            (self._user_id, *ids),
+        ).fetchall()
+        counts = {row["id"]: int(row["unwatched_count"]) for row in rows}
+        return {item_id: counts.get(item_id, 0) for item_id in ids}
 
     def cards_by_ids(self, item_ids: Sequence[int]) -> list[ItemCard]:
         """按给定顺序取卡片，收藏列表用。可见范围由调用方负责。"""

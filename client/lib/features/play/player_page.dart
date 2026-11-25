@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -11,11 +12,13 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../app/motion.dart';
 import '../../app/theme.dart';
 import '../../app/tv.dart';
+import '../../core/widgets/focus_ring.dart';
 import '../../core/widgets/picker_sheet.dart';
 import '../../core/format.dart';
 import '../../core/network_status.dart';
 import '../../core/providers.dart';
 import '../auth/auth_controller.dart';
+import '../library/art_image.dart';
 import '../library/browse_api.dart';
 import '../subtitles/subtitle_search_sheet.dart';
 import '../subtitles/subtitles_api.dart';
@@ -95,6 +98,26 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   /// 或画面比例和屏幕差得多时，填满才像全屏。本机记住这个选择
   bool _fill = false;
 
+  /// 剧集完播自动连播下一集
+  bool _autoNext = true;
+  int? _autoNextCountdown;
+  Timer? _autoNextTimer;
+  EpisodeQueue? _nextEpisodeQueue;
+
+  /// 字幕外观缩放、底部边距与时间轴延迟（秒）
+  double _subtitleScale = 1.0;
+  double _subtitleBottomPadding = 28.0;
+  double _subtitleDelay = 0.0;
+
+  /// MKV 章节列表
+  List<PlayerChapter> _chapters = const [];
+  bool _chaptersLoaded = false;
+
+  /// 播放信息浮层（Stats for Nerds）
+  bool _showStats = false;
+  Timer? _statsTimer;
+  String _hwdec = '--';
+
   /// 锁屏：控制层只剩锁，画面手势和返回键都不起作用，免得躺着看时误触
   bool _locked = false;
 
@@ -135,9 +158,25 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     _dio = ref.read(apiClientProvider);
     _network = ref.read(networkStatusProvider);
     _cellularConfirmed = _args.cellularConfirmed;
+    final prefs = ref.read(playerPrefsProvider);
     unawaited(
-      ref.read(playerPrefsProvider).readFill().then((fill) {
-        if (mounted) setState(() => _fill = fill);
+      Future.wait([
+        prefs.readFill(),
+        prefs.readAutoNext(),
+        prefs.readSubtitleScale(),
+        prefs.readSubtitleBottomPadding(),
+        prefs.readStatsEnabled(),
+      ]).then((values) {
+        if (!mounted) return;
+        final statsEnabled = values[4] as bool;
+        setState(() {
+          _fill = values[0] as bool;
+          _autoNext = values[1] as bool;
+          _subtitleScale = values[2] as double;
+          _subtitleBottomPadding = values[3] as double;
+          _showStats = statsEnabled;
+        });
+        if (statsEnabled) _startStatsTimer();
       }),
     );
     WidgetsBinding.instance.addObserver(this);
@@ -151,6 +190,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       stream.playing.listen((playing) {
         setState(() => _playing = playing);
         if (playing) {
+          _cancelAutoNextTimerOnly();
           _scheduleHide();
         } else {
           unawaited(_report(event: 'paused'));
@@ -166,13 +206,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
         setState(() => _duration = v);
         if (v > Duration.zero) {
           unawaited(_loadSubtitles());
+          unawaited(_loadChapters());
           unawaited(_reportMediaInfo());
         }
       }),
       // 画面参数在第一帧解码后才有，HDR 要靠它判断
       stream.videoParams.listen((_) => unawaited(_reportMediaInfo())),
       stream.completed.listen((done) {
-        if (done && _duration > Duration.zero) unawaited(_exit(finished: true));
+        if (done && _duration > Duration.zero) {
+          unawaited(_handleCompleted());
+        }
       }),
       stream.error.listen(_onError),
     ]);
@@ -204,6 +247,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     _toastTimer?.cancel();
     _reportTimer?.cancel();
     _levelTimer?.cancel();
+    _autoNextTimer?.cancel();
+    _statsTimer?.cancel();
     // 亮度只在播放器里生效，出去就跟随系统
     if (_brightnessChanged) unawaited(PlayerLevels.resetBrightness());
     // 没走 _exit 就被移除时（如切换服务器）也存一次进度
@@ -298,12 +343,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
   Future<void> _switchTo(PlayerArgs next, {EpisodeQueue? episodes}) async {
     _errorTimer?.cancel();
     _scrubTimer?.cancel();
+    _cancelAutoNextTimerOnly();
     _resetSeekAccum();
     _reported = null;
     _downloadedSubtitles.clear();
     _mediaInfoReported = false;
     _subtitlesLoaded = false;
+    _chaptersLoaded = false;
     _exiting = false;
+    _nextEpisodeQueue = null;
     setState(() {
       _args = next;
       if (episodes != null) _episodes = episodes;
@@ -319,8 +367,42 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       _error = null;
       _switching = false;
       _boost = false;
+      _autoNextCountdown = null;
+      _subtitleDelay = 0.0;
+      _chapters = const [];
     });
+    unawaited(_applyNativeSubDelay(0.0));
     await _open(next.start);
+  }
+
+  Future<void> _loadChapters() async {
+    if (_chaptersLoaded) return;
+    _chaptersLoaded = true;
+    final platform = _player.platform;
+    if (platform is! NativePlayer) return;
+    try {
+      final raw =
+          await (platform as dynamic).getProperty('chapter-list') as String?;
+      final parsed = parseChapterList(raw);
+      if (mounted && parsed.isNotEmpty) {
+        setState(() => _chapters = parsed);
+      }
+    } on Object {
+      // 非原生或读取失败时保持空章节列表
+    }
+  }
+
+  Future<void> _applyNativeSubDelay(double delay) async {
+    final platform = _player.platform;
+    if (platform is! NativePlayer) return;
+    try {
+      await (platform as dynamic).setProperty(
+        'sub-delay',
+        delay.toStringAsFixed(1),
+      );
+    } on Object {
+      // 非原生或属性不可写时安全忽略
+    }
   }
 
   /// mpv 默认的绝对跳转是精确跳转：先退回上一个关键帧，再解码到目标位置。网络来源（115 直链）
@@ -499,6 +581,119 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       }
     }
     if (mounted) Navigator.of(context).pop();
+  }
+
+  void _cancelAutoNextTimerOnly() {
+    _autoNextTimer?.cancel();
+    _autoNextTimer = null;
+    if (_autoNextCountdown != null && mounted) {
+      setState(() {
+        _autoNextCountdown = null;
+        _nextEpisodeQueue = null;
+      });
+    }
+  }
+
+  Future<void> _handleCompleted() async {
+    if (_exiting || _switching || _autoNextCountdown != null) return;
+    final queue = _episodes;
+    if (!_autoNext ||
+        _args.playlistId != null ||
+        queue == null ||
+        !queue.hasNext) {
+      await _exit(finished: true);
+      return;
+    }
+    _hideTimer?.cancel();
+    await _player.pause();
+    await _report(finished: true)
+        .timeout(const Duration(seconds: 3), onTimeout: () {});
+    if (!mounted || _exiting) return;
+
+    final withinIndex = nextPlayableIndex(
+      queue.season.episodes,
+      queue.index,
+      1,
+    );
+    final EpisodeQueue? immediateNext = withinIndex == null
+        ? null
+        : queue.select(queue.season, withinIndex);
+
+    setState(() {
+      _nextEpisodeQueue = immediateNext;
+      _autoNextCountdown = 5;
+    });
+
+    if (immediateNext == null) {
+      unawaited(
+        queue
+            .neighbour(_dio, ref.read(apiBaseUrlProvider), 1)
+            .then((target) {
+              if (!mounted || _autoNextCountdown == null) return;
+              if (target == null) {
+                _autoNextTimer?.cancel();
+                _autoNextTimer = null;
+                setState(() => _autoNextCountdown = null);
+                unawaited(_exit(finished: true));
+              } else {
+                setState(() => _nextEpisodeQueue = target);
+              }
+            })
+            .catchError((Object _) {}),
+      );
+    }
+
+    _autoNextTimer?.cancel();
+    _autoNextTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || _autoNextCountdown == null) {
+        timer.cancel();
+        return;
+      }
+      final next = _autoNextCountdown! - 1;
+      if (next <= 0) {
+        timer.cancel();
+        _autoNextTimer = null;
+        unawaited(_playNextFromCountdown());
+      } else {
+        setState(() => _autoNextCountdown = next);
+      }
+    });
+  }
+
+  Future<void> _playNextFromCountdown() async {
+    _autoNextTimer?.cancel();
+    _autoNextTimer = null;
+    final preloaded = _nextEpisodeQueue;
+    if (mounted) {
+      setState(() {
+        _autoNextCountdown = null;
+        _nextEpisodeQueue = null;
+      });
+    }
+    if (preloaded != null) {
+      await _switchEpisode(preloaded.current, nextQueue: preloaded);
+    } else {
+      await _playNeighbour(1);
+    }
+  }
+
+  void _cancelAutoNext() {
+    _autoNextTimer?.cancel();
+    _autoNextTimer = null;
+    setState(() {
+      _autoNextCountdown = null;
+      _nextEpisodeQueue = null;
+    });
+    _showControls(focusPlay: true);
+  }
+
+  String _nextEpisodeTitle() {
+    final next = _nextEpisodeQueue?.current;
+    if (next == null) return '下一集';
+    final name = next.name;
+    return (name == null || name.isEmpty)
+        ? '第 ${next.number} 集'
+        : '第 ${next.number} 集 · $name';
   }
 
   // ---- 控制条 ----
@@ -824,11 +1019,25 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       rate: _rate,
       fill: _fill,
       canSearchSubtitles: _canSearchSubtitles,
+      subtitleScale: _subtitleScale,
+      subtitleBottomPadding: _subtitleBottomPadding,
+      subtitleDelay: _subtitleDelay,
+      autoNext: _autoNext,
+      showStats: _showStats,
+      chapters: _chapters,
+      position: _position,
       onAudio: (track) => unawaited(_player.setAudioTrack(track)),
       onSubtitle: (track) =>
           unawaited(_player.setSubtitleTrack(track ?? SubtitleTrack.no())),
       onRate: (rate) => unawaited(_setRate(rate)),
       onFill: (fill) => unawaited(_setFill(fill)),
+      onSubtitleScale: (scale) => unawaited(_setSubtitleScale(scale)),
+      onSubtitleBottomPadding: (padding) =>
+          unawaited(_setSubtitleBottomPadding(padding)),
+      onSubtitleDelay: (delay) => unawaited(_setSubtitleDelay(delay)),
+      onAutoNext: (enabled) => unawaited(_setAutoNext(enabled)),
+      onShowStats: (enabled) => unawaited(_setShowStats(enabled)),
+      onJumpChapter: (chapter) => unawaited(_jumpToChapter(chapter)),
       onSearchSubtitles: _searchSubtitles,
       only: only,
     );
@@ -1063,6 +1272,28 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
                   ),
                   _centerLabel(),
                   _controlsLayer(),
+                  if (_showStats && _error == null)
+                    Positioned(
+                      top:
+                          MediaQuery.paddingOf(context).top +
+                          (_controls && !_locked ? 68 : 16),
+                      left: MediaQuery.paddingOf(context).left + 16,
+                      child: PlayerStatsOverlay(stats: _buildStatsInfo()),
+                    ),
+                  if (_autoNextCountdown case final countdown?)
+                    Positioned(
+                      right: MediaQuery.paddingOf(context).right + 24,
+                      bottom:
+                          MediaQuery.paddingOf(context).bottom +
+                          (_controls && !_locked ? 132 : 24),
+                      child: AutoNextOverlay(
+                        seconds: countdown,
+                        nextTitle: _nextEpisodeTitle(),
+                        tv: _tv,
+                        onPlayNow: () => unawaited(_playNextFromCountdown()),
+                        onCancel: _cancelAutoNext,
+                      ),
+                    ),
                   if (_error case final error?) _errorLayer(error),
                 ],
               );
@@ -1082,27 +1313,149 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
     await ref.read(playerPrefsProvider).writeFill(fill);
   }
 
-  /// 字幕按屏幕高度定字号（约 5.5%），白字黑描边、不加底色块，贴在屏幕下方。
-  /// 播放器默认按 1080p 缩放，手机上会小到十几像素。
-  SubtitleViewConfiguration _subtitleStyle(double height) {
-    const base = 32.0;
-    const outline = Colors.black87;
-    return SubtitleViewConfiguration(
-      style: const TextStyle(
-        height: 1.35,
-        fontSize: base,
-        color: Colors.white,
-        fontWeight: FontWeight.w500,
-        shadows: [
-          Shadow(color: outline, blurRadius: 3),
-          Shadow(color: outline, offset: Offset(1, 1), blurRadius: 1),
-          Shadow(color: outline, offset: Offset(-1, -1), blurRadius: 1),
-        ],
-      ),
-      textScaler: TextScaler.linear((height * .055).clamp(18.0, 48.0) / base),
-      padding: const EdgeInsets.fromLTRB(48, 0, 48, 28),
+  Future<void> _setAutoNext(bool enabled) async {
+    if (enabled == _autoNext) return;
+    setState(() => _autoNext = enabled);
+    await ref.read(playerPrefsProvider).writeAutoNext(enabled);
+  }
+
+  Future<void> _setSubtitleScale(double scale) async {
+    if ((scale - _subtitleScale).abs() < 0.01) return;
+    setState(() => _subtitleScale = scale);
+    await ref.read(playerPrefsProvider).writeSubtitleScale(scale);
+  }
+
+  Future<void> _setSubtitleBottomPadding(double padding) async {
+    if ((padding - _subtitleBottomPadding).abs() < 0.5) return;
+    setState(() => _subtitleBottomPadding = padding);
+    await ref.read(playerPrefsProvider).writeSubtitleBottomPadding(padding);
+  }
+
+  Future<void> _setSubtitleDelay(double delay) async {
+    final rounded = (delay * 10).round() / 10;
+    setState(() => _subtitleDelay = rounded);
+    await _applyNativeSubDelay(rounded);
+  }
+
+  Future<void> _setShowStats(bool enabled) async {
+    if (enabled == _showStats) return;
+    setState(() => _showStats = enabled);
+    if (enabled) {
+      _startStatsTimer();
+    } else {
+      _statsTimer?.cancel();
+      _statsTimer = null;
+    }
+    await ref.read(playerPrefsProvider).writeStatsEnabled(enabled);
+  }
+
+  void _startStatsTimer() {
+    _statsTimer?.cancel();
+    unawaited(_refreshStats());
+    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _showStats) unawaited(_refreshStats());
+    });
+  }
+
+  Future<void> _refreshStats() async {
+    final platform = _player.platform;
+    if (platform is NativePlayer) {
+      try {
+        final raw =
+            await (platform as dynamic).getProperty('hwdec-current') as String?;
+        final value = (raw == null || raw.isEmpty || raw == 'no') ? '软解' : raw;
+        if (mounted) {
+          setState(() => _hwdec = value);
+          return;
+        }
+      } on Object {
+        // 读取失败安全降级
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  PlayerStatsInfo _buildStatsInfo() {
+    final state = _player.state;
+    final vp = state.videoParams;
+    final w = vp.w ?? state.width;
+    final h = vp.h ?? state.height;
+    final resolution = (w != null && h != null && w > 0 && h > 0)
+        ? '$w×$h'
+        : '--';
+
+    final currentVideo = state.tracks.video
+        .where((t) => t.id == state.track.video.id)
+        .firstOrNull;
+    final vCodec = (currentVideo?.codec ?? state.track.video.codec)
+        ?.toUpperCase();
+    final hdrLabel = switch (vp.gamma) {
+      'pq' => 'HDR10',
+      'hlg' => 'HLG',
+      _ => null,
+    };
+    final videoParts = [
+      if (vCodec != null && vCodec.isNotEmpty) vCodec,
+      ?hdrLabel,
+    ];
+    final videoCodec = videoParts.isEmpty ? '--' : videoParts.join(' · ');
+
+    final currentAudio = state.tracks.audio
+        .where((t) => t.id == state.track.audio.id)
+        .firstOrNull;
+    final aCodec = (currentAudio?.codec ?? state.track.audio.codec)
+        ?.toUpperCase();
+    final channels =
+        state.audioParams.hrChannels ??
+        state.audioParams.channels ??
+        (state.audioParams.channelCount != null
+            ? '${state.audioParams.channelCount}ch'
+            : null);
+    final audioParts = [
+      if (aCodec != null && aCodec.isNotEmpty) aCodec,
+      if (channels != null && channels.isNotEmpty) channels,
+    ];
+    final audioCodec = audioParts.isEmpty ? '--' : audioParts.join(' · ');
+
+    final bufferAhead = _buffer > _position
+        ? _buffer - _position
+        : Duration.zero;
+    return PlayerStatsInfo(
+      resolution: resolution,
+      videoCodec: videoCodec,
+      audioCodec: audioCodec,
+      hwdec: _hwdec,
+      rate: _rate,
+      bufferAhead: bufferAhead,
     );
   }
+
+  Future<void> _skipIntro() async {
+    final target = skipIntroTarget(
+      position: _position,
+      duration: _duration,
+      chapters: _chapters,
+    );
+    _showToast('已跳过片头 · ${formatClock(target)}');
+    _scheduleHide();
+    await _player.seek(target);
+  }
+
+  Future<void> _jumpToChapter(PlayerChapter chapter) async {
+    final target = _clamp(chapter.start);
+    _showToast('${chapter.title} · ${formatClock(target)}');
+    _scheduleHide();
+    await _player.seek(target);
+  }
+
+  /// 字幕按屏幕高度定字号（约 5.5%），白字黑描边、不加底色块，贴在屏幕下方。
+  /// 播放器默认按 1080p 缩放，手机上会小到十几像素。
+  SubtitleViewConfiguration _subtitleStyle(double height) =>
+      buildSubtitleViewConfiguration(
+        height,
+        scale: _subtitleScale,
+        bottomPadding: _subtitleBottomPadding,
+      );
 
   /// 屏幕中间的临时提示：滑动拖进度、调亮度音量、2 倍速、快进快退
   Widget _centerLabel() {
@@ -1149,6 +1502,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
       position: _scrub ?? _position,
       duration: _duration,
       buffer: _buffer,
+      chapters: _chapters,
       playing: _playing,
       castable: _args.castable,
       rate: _rate,
@@ -1175,6 +1529,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage>
           ? () => unawaited(_playNeighbour(1))
           : null,
       onEpisodes: _episodes == null ? null : () => unawaited(_openEpisodes()),
+      onSkipIntro: () => unawaited(_skipIntro()),
       // 旋转、比例、锁屏是触屏的；电视上画面比例在齿轮里
       onRotate: _tv ? null : () => unawaited(_rotate()),
       onToggleFill: _tv ? null : () => unawaited(_setFill(!_fill)),

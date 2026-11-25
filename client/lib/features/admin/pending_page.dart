@@ -25,11 +25,30 @@ part 'pending_suggestion.dart';
 part 'pending_files_tab.dart';
 
 /// 管理后台的待处理页：没匹配上的作品、没归入条目的视频和被忽略的附加内容，逐个手动指定。
-class PendingPage extends ConsumerWidget {
+class PendingPage extends ConsumerStatefulWidget {
   const PendingPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PendingPage> createState() => _PendingPageState();
+}
+
+class _PendingPageState extends ConsumerState<PendingPage> {
+  final _filterController = TextEditingController();
+  String _filterQuery = '';
+
+  @override
+  void dispose() {
+    _filterController.dispose();
+    super.dispose();
+  }
+
+  void _clearFilter() {
+    _filterController.clear();
+    setState(() => _filterQuery = '');
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final summary = ref.watch(pendingSummaryProvider).value;
     String count(int? n) => n == null ? '' : ' $n';
     return DefaultTabController(
@@ -47,13 +66,63 @@ class PendingPage extends ConsumerWidget {
         ),
         body: Column(
           children: [
-            if (summary != null && summary.waiting > 0) _Waiting(summary),
-            const Expanded(
+            if (summary != null && summary.waiting > 0)
+              AdminListWidth(
+                maxWidth: adminGridWidth,
+                bottom: 0,
+                builder: (padding) => Padding(
+                  padding: EdgeInsets.only(right: padding.right),
+                  child: _Waiting(summary),
+                ),
+              ),
+            AdminListWidth(
+              maxWidth: adminGridWidth,
+              top: 10,
+              bottom: 4,
+              builder: (padding) => Padding(
+                padding: EdgeInsets.fromLTRB(
+                  CinemaSpacing.gutter,
+                  padding.top,
+                  padding.right + CinemaSpacing.gutter,
+                  padding.bottom,
+                ),
+                child: TextField(
+                  controller: _filterController,
+                  maxLength: 100,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search),
+                    hintText: '过滤当前页（片名、路径或资料库）',
+                    counterText: '',
+                    isDense: true,
+                    suffixIcon: _filterQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: '清除过滤',
+                            onPressed: _clearFilter,
+                            icon: const Icon(Icons.close),
+                          ),
+                  ),
+                  onChanged: (value) => setState(() => _filterQuery = value),
+                ),
+              ),
+            ),
+            Expanded(
               child: TabBarView(
                 children: [
-                  _WorksTab(),
-                  _FilesTab(status: 'unplaced'),
-                  _FilesTab(status: 'ignored'),
+                  _WorksTab(
+                    filterQuery: _filterQuery,
+                    onClearFilter: _clearFilter,
+                  ),
+                  _FilesTab(
+                    status: 'unplaced',
+                    filterQuery: _filterQuery,
+                    onClearFilter: _clearFilter,
+                  ),
+                  _FilesTab(
+                    status: 'ignored',
+                    filterQuery: _filterQuery,
+                    onClearFilter: _clearFilter,
+                  ),
                 ],
               ),
             ),
@@ -236,7 +305,10 @@ mixin _PagedTab<T extends ConsumerStatefulWidget> on ConsumerState<T> {
 }
 
 class _WorksTab extends ConsumerStatefulWidget {
-  const _WorksTab();
+  const _WorksTab({required this.filterQuery, required this.onClearFilter});
+
+  final String filterQuery;
+  final VoidCallback onClearFilter;
 
   @override
   ConsumerState<_WorksTab> createState() => _WorksTabState();
@@ -479,7 +551,16 @@ class _WorksTabState extends ConsumerState<_WorksTab>
             message: '同步时没能自动匹配的作品会列在这里，等你手动指定。',
           );
         }
-        final pageIds = page.items.map((work) => work.id).toSet();
+        final q = widget.filterQuery.trim().toLowerCase();
+        final filtered = [
+          for (final work in page.items)
+            if (q.isEmpty ||
+                (work.title?.toLowerCase().contains(q) ?? false) ||
+                work.path.toLowerCase().contains(q) ||
+                work.libraryName.toLowerCase().contains(q))
+              work,
+        ];
+        final pageIds = filtered.map((work) => work.id).toSet();
         final allSelected =
             pageIds.isNotEmpty && pageIds.every(selected.contains);
         return Column(
@@ -507,8 +588,12 @@ class _WorksTabState extends ConsumerState<_WorksTab>
                       .where((work) => selected.contains(work.id))
                       .toList(),
                 ),
-                onDelete: () =>
-                    _deleteBatch(pageIds.where(selected.contains).toList()),
+                onDelete: () => _deleteBatch(
+                  page.items
+                      .where((work) => selected.contains(work.id))
+                      .map((work) => work.id)
+                      .toList(),
+                ),
                 onSecondary:
                     page.items.any(
                       (w) =>
@@ -528,49 +613,63 @@ class _WorksTabState extends ConsumerState<_WorksTab>
                 secondaryLabel: '采用 AI 建议',
               ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.only(bottom: 24),
-                children: [
-                  for (final work in page.items)
-                    _WorkTile(
-                      work: work,
-                      busy: busy.contains(work.id),
-                      selected: selected.contains(work.id),
-                      onSelected: (value) => setState(() {
-                        value
-                            ? selected.add(work.id)
-                            : selected.remove(work.id);
+              child: AdminListWidth(
+                maxWidth: adminGridWidth,
+                bottom: 24,
+                builder: (padding) => ListView(
+                  padding: padding,
+                  children: [
+                    if (filtered.isEmpty)
+                      EmptyState(
+                        icon: Icons.filter_alt_off_outlined,
+                        title: '当前页没有匹配的作品',
+                        action: OutlinedButton(
+                          onPressed: widget.onClearFilter,
+                          child: const Text('清除过滤'),
+                        ),
+                      )
+                    else
+                      for (final work in filtered)
+                        _WorkTile(
+                          work: work,
+                          busy: busy.contains(work.id),
+                          selected: selected.contains(work.id),
+                          onSelected: (value) => setState(() {
+                            value
+                                ? selected.add(work.id)
+                                : selected.remove(work.id);
+                          }),
+                          onPick: () => _pick(work),
+                          onDelete: (title) => _delete(work, title),
+                          analyzing: analysis,
+                          onAdopt: () => _adopt(work),
+                          onIgnore: () => _suggestionAction(
+                            work,
+                            () => ignoreSuggestion(
+                              ref.read(apiClientProvider),
+                              work.id,
+                            ),
+                            '已忽略这条 AI 建议',
+                          ),
+                          onReanalyze: () => _suggestionAction(
+                            work,
+                            () => reanalyzeSuggestion(
+                              ref.read(apiClientProvider),
+                              work.id,
+                            ),
+                            '已重新排队分析',
+                          ),
+                        ),
+                    Pager(
+                      offset: offset,
+                      total: page.total,
+                      onChanged: (value) => setState(() {
+                        selected.clear();
+                        offset = value;
                       }),
-                      onPick: () => _pick(work),
-                      onDelete: (title) => _delete(work, title),
-                      analyzing: analysis,
-                      onAdopt: () => _adopt(work),
-                      onIgnore: () => _suggestionAction(
-                        work,
-                        () => ignoreSuggestion(
-                          ref.read(apiClientProvider),
-                          work.id,
-                        ),
-                        '已忽略这条 AI 建议',
-                      ),
-                      onReanalyze: () => _suggestionAction(
-                        work,
-                        () => reanalyzeSuggestion(
-                          ref.read(apiClientProvider),
-                          work.id,
-                        ),
-                        '已重新排队分析',
-                      ),
                     ),
-                  Pager(
-                    offset: offset,
-                    total: page.total,
-                    onChanged: (value) => setState(() {
-                      selected.clear();
-                      offset = value;
-                    }),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],

@@ -2,8 +2,10 @@ import 'package:iris/app/theme.dart';
 import 'package:iris/core/api/api_error.dart';
 import 'package:iris/core/providers.dart';
 import 'package:iris/core/server.dart';
+import 'package:iris/features/admin/admin_widgets.dart';
 import 'package:iris/features/admin/catalog_api.dart';
 import 'package:iris/features/admin/item_admin_page.dart';
+import 'package:iris/features/admin/metadata_picker.dart';
 import 'package:iris/features/admin/pending_page.dart';
 import 'package:iris/features/admin/settings_page.dart';
 import 'package:dio/dio.dart';
@@ -328,7 +330,7 @@ void main() {
       await tester.tap(find.bySemanticsLabel('指定 奇怪的片名（2021）'));
       await tester.pumpAndSettle();
       expect(find.text('候选'), findsOneWidget);
-      expect(find.text('匹配度 100'), findsOneWidget);
+      expect(find.text('100%'), findsOneWidget);
       expect(find.textContaining('片名完全一致，年份一致，搜索结果唯一'), findsOneWidget);
       await tester.tap(find.text('奇怪的片名（2021）').last);
       await tester.pumpAndSettle();
@@ -535,7 +537,13 @@ void main() {
 
       await tester.tap(find.bySemanticsLabel('指定 奇怪的片名（2021）'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), '424242');
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextField),
+        ),
+        '424242',
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('使用条目 ID 424242'));
       await tester.pumpAndSettle();
@@ -658,6 +666,94 @@ void main() {
       });
       expect(find.text('没有未匹配的作品'), findsOneWidget);
     });
+
+    testWidgets('filters current page locally and uses adminGridWidth', (
+      tester,
+    ) async {
+      await pumpAdmin(tester, const PendingPage(), (api) {
+        api.on('GET $_admin/pending', _summary(unmatched: 2));
+        api.on(
+          'GET $_admin/works?state=unmatched&$_page',
+          _pageOf([
+            _work(),
+            {
+              'id': 8,
+              'library_id': 2,
+              'library_name': '纪录片',
+              'kind': 'movie',
+              'path': '/影视/纪录片/地球脉动 (2006)',
+              'title': '地球脉动',
+              'year': 2006,
+              'state': 'unmatched',
+              'manual': false,
+              'reason': null,
+              'candidates': <Object>[],
+              'file_count': 1,
+              'item': null,
+              'suggestion': null,
+            },
+          ]),
+        );
+      });
+
+      final widths = tester.widgetList<AdminListWidth>(
+        find.byType(AdminListWidth),
+      );
+      expect(widths, isNotEmpty);
+      expect(widths.every((w) => w.maxWidth == adminGridWidth), isTrue);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, '过滤当前页（片名、路径或资料库）'),
+        '纪录片',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('地球脉动（2006）'), findsOneWidget);
+      expect(find.text('奇怪的片名（2021）'), findsNothing);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, '过滤当前页（片名、路径或资料库）'),
+        '完全不存在',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('当前页没有匹配的作品'), findsOneWidget);
+      await tester.tap(find.text('清除过滤'));
+      await tester.pumpAndSettle();
+      expect(find.text('地球脉动（2006）'), findsOneWidget);
+      expect(find.text('奇怪的片名（2021）'), findsOneWidget);
+    });
+
+    testWidgets(
+      'metadata picker renders title, original title, score badge, reasons and overview',
+      (tester) async {
+        await pumpAdmin(
+          tester,
+          MetadataPickerDialog(
+            title: '修正匹配',
+            kind: 'movie',
+            libraryId: 1,
+            suggestions: const [
+              MetadataCandidate(
+                providerId: 'builtin.tmdb',
+                remoteId: '1001',
+                title: '星际穿越',
+                originalTitle: 'Interstellar',
+                year: 2014,
+                score: 92,
+                reasons: ['片名完全一致', '年份一致'],
+                overview: '一队探险家利用他们针对虫洞的新发现，超越人类对于太空旅行的极限。',
+              ),
+            ],
+          ),
+          (_) {},
+        );
+
+        expect(find.text('星际穿越（2014）'), findsOneWidget);
+        expect(find.text('Interstellar · ID 1001'), findsOneWidget);
+        expect(find.text('92%'), findsOneWidget);
+        expect(find.text('片名完全一致，年份一致'), findsOneWidget);
+        expect(find.text('一队探险家利用他们针对虫洞的新发现，超越人类对于太空旅行的极限。'), findsOneWidget);
+      },
+    );
   });
 
   group('ai suggestions', () {

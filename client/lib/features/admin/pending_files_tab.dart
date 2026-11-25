@@ -1,10 +1,16 @@
 part of 'pending_page.dart';
 
 class _FilesTab extends ConsumerStatefulWidget {
-  const _FilesTab({required this.status});
+  const _FilesTab({
+    required this.status,
+    required this.filterQuery,
+    required this.onClearFilter,
+  });
 
   /// unplaced：没有归入条目；ignored：被识别为附加内容
   final String status;
+  final String filterQuery;
+  final VoidCallback onClearFilter;
 
   @override
   ConsumerState<_FilesTab> createState() => _FilesTabState();
@@ -198,27 +204,50 @@ class _FilesTabState extends ConsumerState<_FilesTab>
         }
         final muted = Theme.of(context).textTheme.bodySmall
             ?.copyWith(color: CinemaColors.text2);
-        final pageIds = page.items.map((file) => file.id).toSet();
+        final q = widget.filterQuery.trim().toLowerCase();
+        final filtered = [
+          for (final file in page.items)
+            if (q.isEmpty ||
+                file.name.toLowerCase().contains(q) ||
+                file.path.toLowerCase().contains(q) ||
+                file.libraryName.toLowerCase().contains(q) ||
+                (file.item?.title.toLowerCase().contains(q) ?? false))
+              file,
+        ];
+        final pageIds = filtered.map((file) => file.id).toSet();
         final allSelected =
             pageIds.isNotEmpty && pageIds.every(selected.contains);
         return Column(
           children: [
             if (page.reasons.length > 1 || reason != null)
-              _ReasonFilter(
-                reasons: page.reasons,
-                selected: reason,
-                onChanged: (value) => setState(() {
-                  reason = value;
-                  offset = 0;
-                  selected.clear();
-                }),
+              AdminListWidth(
+                maxWidth: adminGridWidth,
+                bottom: 0,
+                builder: (padding) => Padding(
+                  padding: EdgeInsets.only(right: padding.right),
+                  child: _ReasonFilter(
+                    reasons: page.reasons,
+                    selected: reason,
+                    onChanged: (value) => setState(() {
+                      reason = value;
+                      offset = 0;
+                      selected.clear();
+                    }),
+                  ),
+                ),
               ),
             if (page.total == 0)
-              const Expanded(
-                child: EmptyState(
-                  icon: Icons.filter_alt_off_outlined,
-                  title: '没有符合该原因的视频',
-                  message: '换一个原因，或选择「全部」。',
+              Expanded(
+                child: AdminListWidth(
+                  maxWidth: adminGridWidth,
+                  builder: (padding) => Padding(
+                    padding: EdgeInsets.only(right: padding.right),
+                    child: const EmptyState(
+                      icon: Icons.filter_alt_off_outlined,
+                      title: '没有符合该原因的视频',
+                      message: '换一个原因，或选择「全部」。',
+                    ),
+                  ),
                 ),
               ),
             if (page.total > 0 && selected.isNotEmpty)
@@ -256,46 +285,65 @@ class _FilesTabState extends ConsumerState<_FilesTab>
                         restore: false,
                       ),
                 secondaryLabel: ignored ? null : '批量忽略',
-                onDelete: () =>
-                    _deleteBatch(pageIds.where(selected.contains).toList()),
+                onDelete: () => _deleteBatch(
+                  page.items
+                      .where((file) => selected.contains(file.id))
+                      .map((file) => file.id)
+                      .toList(),
+                ),
               ),
             if (page.total > 0)
               Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.only(bottom: 24),
-                  children: [
-                    for (final file in page.items)
-                      _PendingRow(
-                        title: file.name,
-                        lines: [
-                          Text(file.path, style: muted),
-                          Text(
-                            '${file.libraryName} · ${formatSize(file.size)}'
-                            '${file.item == null ? '' : ' · 所在作品：${file.item!.title}'}',
-                            style: muted,
+                child: AdminListWidth(
+                  maxWidth: adminGridWidth,
+                  bottom: 24,
+                  builder: (padding) => ListView(
+                    padding: padding,
+                    children: [
+                      if (filtered.isEmpty)
+                        EmptyState(
+                          icon: Icons.filter_alt_off_outlined,
+                          title: '当前页没有匹配的视频',
+                          action: OutlinedButton(
+                            onPressed: widget.onClearFilter,
+                            child: const Text('清除过滤'),
                           ),
-                          Text(file.reason),
-                        ],
-                        action: ignored ? '恢复' : '指定',
-                        busy: batchBusy || busy.contains(file.id),
-                        selected: selected.contains(file.id),
-                        onSelected: (value) => setState(() {
-                          value
-                              ? selected.add(file.id)
-                              : selected.remove(file.id);
+                        )
+                      else
+                        for (final file in filtered)
+                          _PendingRow(
+                            title: file.name,
+                            lines: [
+                              Text(file.path, style: muted),
+                              Text(
+                                '${file.libraryName} · ${formatSize(file.size)}'
+                                '${file.item == null ? '' : ' · 所在作品：${file.item!.title}'}',
+                                style: muted,
+                              ),
+                              Text(file.reason),
+                            ],
+                            action: ignored ? '恢复' : '指定',
+                            busy: batchBusy || busy.contains(file.id),
+                            selected: selected.contains(file.id),
+                            onSelected: (value) => setState(() {
+                              value
+                                  ? selected.add(file.id)
+                                  : selected.remove(file.id);
+                            }),
+                            onAction: () =>
+                                ignored ? _restore(file) : _pick(file),
+                            onDelete: () => _delete(file),
+                          ),
+                      Pager(
+                        offset: offset,
+                        total: page.total,
+                        onChanged: (value) => setState(() {
+                          selected.clear();
+                          offset = value;
                         }),
-                        onAction: () => ignored ? _restore(file) : _pick(file),
-                        onDelete: () => _delete(file),
                       ),
-                    Pager(
-                      offset: offset,
-                      total: page.total,
-                      onChanged: (value) => setState(() {
-                        selected.clear();
-                        offset = value;
-                      }),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
           ],

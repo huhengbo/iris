@@ -239,6 +239,13 @@ def report_media_info(
     return Response(status_code=204)
 
 
+@router.delete("/items/{item_id}/resume", status_code=204)
+def remove_item_resume(item_id: int, user: CurrentUser, db: Db, clock: AppClock) -> Response:
+    """从继续观看和最近播放中移除（保留已看标记和播放事件历史）。"""
+    PlaybackStates(db, clock, user).remove_item_resume(item_id)
+    return Response(status_code=204)
+
+
 @router.put("/items/{item_id}/watched", status_code=204)
 def mark_item_watched(item_id: int, user: CurrentUser, db: Db, clock: AppClock) -> Response:
     """电影标记它自己，剧集标记全部集。"""

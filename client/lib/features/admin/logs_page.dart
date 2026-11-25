@@ -9,12 +9,65 @@ import '../../core/widgets/focus_ring.dart';
 import 'admin_widgets.dart';
 import 'maintenance_api.dart';
 
+enum _LogLevelFilter {
+  all('全部'),
+  error('错误'),
+  warning('警告'),
+  info('信息');
+
+  const _LogLevelFilter(this.label);
+
+  final String label;
+
+  bool matches(ServerLogEntry entry) => switch (this) {
+    _LogLevelFilter.all => true,
+    _LogLevelFilter.error =>
+      entry.level == 'error' || entry.level == 'critical',
+    _LogLevelFilter.warning => entry.level == 'warning',
+    _LogLevelFilter.info =>
+      entry.level != 'error' &&
+          entry.level != 'critical' &&
+          entry.level != 'warning',
+  };
+}
+
 /// 日志：服务进程最近的日志，新的在前。点一行看完整内容。
-class LogsPage extends ConsumerWidget {
+class LogsPage extends ConsumerStatefulWidget {
   const LogsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LogsPage> createState() => _LogsPageState();
+}
+
+class _LogsPageState extends ConsumerState<LogsPage> {
+  final _search = TextEditingController();
+  String _query = '';
+  _LogLevelFilter _level = _LogLevelFilter.all;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _clearFilters() {
+    _search.clear();
+    setState(() {
+      _query = '';
+      _level = _LogLevelFilter.all;
+    });
+  }
+
+  bool _matches(ServerLogEntry entry) {
+    if (!_level.matches(entry)) return false;
+    if (_query.isEmpty) return true;
+    final q = _query.toLowerCase();
+    return entry.message.toLowerCase().contains(q) ||
+        entry.module.toLowerCase().contains(q);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final logs = ref.watch(serverLogsProvider);
     return Scaffold(
       appBar: AppBar(
@@ -30,24 +83,99 @@ class LogsPage extends ConsumerWidget {
       body: AsyncView(
         value: logs,
         onRetry: () => ref.invalidate(serverLogsProvider),
-        builder: (items) => items.isEmpty
-            ? const EmptyState(
-                icon: Icons.article_outlined,
-                title: '暂无日志',
-                message: '服务启动后的运行日志会显示在这里，重启后清空。',
-              )
-            : RefreshIndicator(
-                onRefresh: () async => ref.refresh(serverLogsProvider.future),
-                child: AdminListWidth(
-                  top: 8,
-                  builder: (padding) => ListView.builder(
-                    padding: padding,
-                    itemCount: items.length,
-                    itemBuilder: (context, index) =>
-                        _LogTile(entry: items[index]),
+        builder: (items) {
+          if (items.isEmpty) {
+            return const EmptyState(
+              icon: Icons.article_outlined,
+              title: '暂无日志',
+              message: '服务启动后的运行日志会显示在这里，重启后清空。',
+            );
+          }
+          final filtered = [
+            for (final entry in items)
+              if (_matches(entry)) entry,
+          ];
+          return AdminListWidth(
+            top: 8,
+            maxWidth: adminGridWidth,
+            builder: (padding) => Column(
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    CinemaSpacing.gutter,
+                    8,
+                    padding.right + CinemaSpacing.gutter,
+                    8,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: _search,
+                        maxLength: 100,
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search),
+                          hintText: '搜索日志消息或模块',
+                          counterText: '',
+                          isDense: true,
+                          suffixIcon: _query.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: '清除搜索',
+                                  onPressed: () {
+                                    _search.clear();
+                                    setState(() => _query = '');
+                                  },
+                                  icon: const Icon(Icons.close),
+                                ),
+                        ),
+                        onChanged: (value) =>
+                            setState(() => _query = value.trim()),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          for (final level in _LogLevelFilter.values)
+                            ChoiceChip(
+                              label: Text(level.label),
+                              selected: _level == level,
+                              onSelected: (_) => setState(() => _level = level),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-              ),
+                Expanded(
+                  child: filtered.isEmpty
+                      ? Padding(
+                          padding: EdgeInsets.only(right: padding.right),
+                          child: EmptyState(
+                            icon: Icons.filter_alt_off_outlined,
+                            title: '没有符合条件的日志',
+                            action: OutlinedButton(
+                              onPressed: _clearFilters,
+                              child: const Text('清除筛选'),
+                            ),
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: () async =>
+                              ref.refresh(serverLogsProvider.future),
+                          child: ListView.builder(
+                            padding: padding,
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) =>
+                                _LogTile(entry: filtered[index]),
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

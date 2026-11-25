@@ -238,18 +238,14 @@ class _EpisodePickerState extends State<_EpisodePicker> {
                           children: [
                             for (final (i, episode) in season.episodes.indexed)
                               _ScrollIntoView(
-                                child: PickerOption(
-                                  title: '第 ${episode.number} 集',
-                                  subtitle: episode.versions.isEmpty
-                                      ? '没有可播放的文件'
-                                      : episode.name,
+                                child: _EpisodeOptionRow(
+                                  episode: episode,
                                   selected:
                                       season.id == widget.queue.season.id &&
                                       i == widget.queue.index,
                                   autofocus:
                                       season.id == widget.queue.season.id &&
                                       i == widget.queue.index,
-                                  enabled: episode.versions.isNotEmpty,
                                   onTap: () =>
                                       Navigator.of(context)
                                           .pop(widget.queue.select(season, i)),
@@ -262,6 +258,113 @@ class _EpisodePickerState extends State<_EpisodePicker> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 选集列表单行：支持左侧 16:9 剧照缩略图 + 2px 观看进度条、当前集琥珀勾，
+/// 以及未选中但已看单集的柔和已看标记。
+class _EpisodeOptionRow extends StatelessWidget {
+  const _EpisodeOptionRow({
+    required this.episode,
+    required this.selected,
+    required this.autofocus,
+    required this.onTap,
+  });
+
+  final Episode episode;
+  final bool selected;
+  final bool autofocus;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = episode.versions.isNotEmpty;
+    final hasStill = !episode.still.isEmpty;
+    final progress = episode.progress;
+    final subtitle = enabled ? episode.name : '没有可播放的文件';
+    return FocusRing(
+      child: ListTile(
+        autofocus: autofocus,
+        enabled: enabled,
+        selected: selected,
+        selectedColor: CinemaColors.text0,
+        minTileHeight: 52,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(CinemaRadius.card)),
+        ),
+        tileColor: selected ? CinemaColors.surface3 : null,
+        selectedTileColor: CinemaColors.surface3,
+        leading: hasStill
+            ? SizedBox(
+                width: 72,
+                height: 40,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(CinemaRadius.small),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ArtImage(art: episode.still),
+                      if (progress != null && progress.fraction > 0)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: SizedBox(
+                            height: 2,
+                            child: DecoratedBox(
+                              decoration: const BoxDecoration(
+                                color: CinemaColors.track,
+                              ),
+                              child: FractionallySizedBox(
+                                alignment: Alignment.centerLeft,
+                                widthFactor: progress.fraction,
+                                child: const ColoredBox(
+                                  color: CinemaColors.amber,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              )
+            : null,
+        title: Text(
+          '第 ${episode.number} 集',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: selected
+                ? CinemaColors.text0
+                : episode.watched
+                ? CinemaColors.text2
+                : CinemaColors.text1,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+        subtitle: subtitle == null
+            ? null
+            : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+        trailing: selected
+            ? const Icon(Icons.check, color: CinemaColors.amber)
+            : episode.watched
+            ? Tooltip(
+                message: '已看',
+                child: Semantics(
+                  label: '已看',
+                  child: const Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: 18,
+                    color: CinemaColors.text2,
+                  ),
+                ),
+              )
+            : null,
+        onTap: onTap,
       ),
     );
   }

@@ -24,4 +24,27 @@ void main() {
       '片名 2',
     ]);
   });
+
+  test('loads and persists history through SearchHistoryStorage', () async {
+    final storage = MemorySearchHistoryStorage(['沙丘', '奥本海默']);
+    final container = ProviderContainer(
+      overrides: [searchHistoryStorageProvider.overrideWithValue(storage)],
+    );
+    addTearDown(container.dispose);
+
+    // 异步恢复本机记录
+    container.read(searchHistoryProvider);
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(searchHistoryProvider), ['沙丘', '奥本海默']);
+
+    final notifier = container.read(searchHistoryProvider.notifier);
+    notifier.add('星际穿越');
+    expect(storage.items, ['星际穿越', '沙丘', '奥本海默']);
+
+    notifier.remove('沙丘');
+    expect(storage.items, ['星际穿越', '奥本海默']);
+
+    notifier.clear();
+    expect(storage.items, isEmpty);
+  });
 }

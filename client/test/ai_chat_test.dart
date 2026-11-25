@@ -403,6 +403,31 @@ void main() {
       expect(find.text('再来点冷门的'), findsOneWidget); // 只剩用户气泡
     });
 
+    testWidgets('adds all recommended cards to watchlist in one tap', (
+      tester,
+    ) async {
+      final h = await pumpChat(
+        tester,
+        setup: (api) => api
+          ..on('PUT /api/items/5/watchlist', null, status: 204)
+          ..on('PUT /api/items/6/watchlist', null, status: 204),
+      );
+      await tapText(tester, starter);
+      await h.emit('tool_start', {'id': 'c1', 'name': 'x', 'label': '找片…'});
+      emitToolEnd(h, [card(5, '喜剧之王'), card(6, '功夫')]);
+      await h.finish();
+
+      expect(find.text('全部加入稍后观看'), findsOneWidget);
+      await tester.tap(find.text('全部加入稍后观看'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(h.api.requests, contains('PUT /api/items/5/watchlist'));
+      expect(h.api.requests, contains('PUT /api/items/6/watchlist'));
+      expect(find.text('已将 2 部加入稍后观看'), findsOneWidget);
+      expect(find.text('已加入稍后观看'), findsOneWidget);
+    });
+
     testWidgets('failed step shows the reason with a warm red icon', (
       tester,
     ) async {

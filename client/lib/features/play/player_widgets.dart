@@ -220,3 +220,293 @@ String _trackLabel(String? title, String? language, String kind, int index) {
 
 String _rateLabel(double rate) =>
     rate == rate.roundToDouble() ? rate.toStringAsFixed(1) : '$rate';
+
+/// 媒体章节：从 mpv `chapter-list` 解析而来。
+class PlayerChapter {
+  const PlayerChapter({required this.title, required this.start});
+
+  final String title;
+  final Duration start;
+}
+
+/// 解析 mpv `chapter-list`（JSON 数组，含 `title` / `time`）。
+/// 非原生环境、空串或格式错误时返回空列表，不抛异常。
+List<PlayerChapter> parseChapterList(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return const [];
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is! List<dynamic>) return const [];
+    final list = <PlayerChapter>[];
+    for (var i = 0; i < decoded.length; i++) {
+      final item = decoded[i];
+      if (item is! Map<String, dynamic>) continue;
+      final time = item['time'];
+      if (time is! num || time.isNaN || time.isInfinite || time < 0) continue;
+      final title = (item['title'] as String?)?.trim();
+      list.add(
+        PlayerChapter(
+          title: (title == null || title.isEmpty) ? '第 ${i + 1} 章' : title,
+          start: Duration(milliseconds: (time * 1000).round()),
+        ),
+      );
+    }
+    list.sort((a, b) => a.start.compareTo(b.start));
+    return list;
+  } on Object {
+    return const [];
+  }
+}
+
+/// 当前播放位置之后的下一章节；不存在时返回 null。
+PlayerChapter? nextChapterAfter(
+  List<PlayerChapter> chapters,
+  Duration position,
+) {
+  for (final chapter in chapters) {
+    if (chapter.start > position + const Duration(seconds: 1)) {
+      return chapter;
+    }
+  }
+  return null;
+}
+
+const _introWindow = Duration(minutes: 5);
+const _defaultSkipIntro = Duration(seconds: 85);
+
+/// 是否在进度条上方展示「跳过片头」胶囊按钮：
+/// 控制条唤出且未锁屏、片长足够，处于剧集前 5 分钟或存在 5 分钟内的片头章节。
+bool shouldShowSkipIntro({
+  required bool visible,
+  required bool locked,
+  required bool episodic,
+  required Duration position,
+  required Duration duration,
+  required List<PlayerChapter> chapters,
+}) {
+  if (!visible || locked || duration <= const Duration(seconds: 90)) {
+    return false;
+  }
+  final hasIntroChapter = chapters.any(
+    (c) =>
+        c.start > Duration.zero &&
+        c.start <= _introWindow &&
+        position < c.start - const Duration(seconds: 2),
+  );
+  if (hasIntroChapter) return true;
+  return episodic && position < _introWindow;
+}
+
+/// 计算「跳过片头」目标位置：存在 0–5 分钟内的下一章节时跳到该章节，
+/// 否则默认前进 85 秒（不超过总时长）。
+Duration skipIntroTarget({
+  required Duration position,
+  required Duration duration,
+  required List<PlayerChapter> chapters,
+}) {
+  for (final chapter in chapters) {
+    if (chapter.start > position + const Duration(seconds: 2) &&
+        chapter.start <= _introWindow) {
+      return duration > Duration.zero && chapter.start > duration
+          ? duration
+          : chapter.start;
+    }
+  }
+  final fallback = position + _defaultSkipIntro;
+  if (duration > Duration.zero && fallback > duration) return duration;
+  return fallback;
+}
+
+/// 根据屏高、字号缩放和底部边距计算字幕配置。
+SubtitleViewConfiguration buildSubtitleViewConfiguration(
+  double height, {
+  double scale = 1.0,
+  double bottomPadding = 28.0,
+}) {
+  const base = 32.0;
+  const outline = Colors.black87;
+  final scaled = ((height * .055).clamp(18.0, 48.0) * scale).clamp(14.0, 64.0);
+  return SubtitleViewConfiguration(
+    style: const TextStyle(
+      height: 1.35,
+      fontSize: base,
+      color: Colors.white,
+      fontWeight: FontWeight.w500,
+      shadows: [
+        Shadow(color: outline, blurRadius: 3),
+        Shadow(color: outline, offset: Offset(1, 1), blurRadius: 1),
+        Shadow(color: outline, offset: Offset(-1, -1), blurRadius: 1),
+      ],
+    ),
+    textScaler: TextScaler.linear(scaled / base),
+    padding: EdgeInsets.fromLTRB(48, 0, 48, bottomPadding),
+  );
+}
+
+/// 顶栏右侧的系统时间与预计结束时间。
+String formatTopBarTime(
+  DateTime now, {
+  required Duration position,
+  required Duration duration,
+  double rate = 1.0,
+}) {
+  String hhmm(DateTime t) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(t.hour)}:${two(t.minute)}';
+  }
+
+  final nowText = hhmm(now);
+  if (duration <= Duration.zero) return nowText;
+  final clampedPos = position < Duration.zero
+      ? Duration.zero
+      : (position > duration ? duration : position);
+  final remaining = duration - clampedPos;
+  final effectiveRate = rate > 0 ? rate : 1.0;
+  final adjusted = Duration(
+    milliseconds: (remaining.inMilliseconds / effectiveRate).round(),
+  );
+  final endText = hhmm(now.add(adjusted));
+  return '$nowText · 预计 $endText 结束';
+}
+
+/// 剧集完播后画面右下角的自动连播倒计时浮层。
+class AutoNextOverlay extends StatelessWidget {
+  const AutoNextOverlay({
+    super.key,
+    required this.seconds,
+    required this.nextTitle,
+    required this.onPlayNow,
+    required this.onCancel,
+    this.tv = false,
+  });
+
+  final int seconds;
+  final String nextTitle;
+  final VoidCallback onPlayNow;
+  final VoidCallback onCancel;
+  final bool tv;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 380),
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        decoration: BoxDecoration(
+          color: CinemaColors.surface2.withValues(alpha: .94),
+          borderRadius: BorderRadius.circular(CinemaRadius.card),
+          border: Border.all(color: CinemaColors.line),
+          boxShadow: CinemaShadows.lift,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$seconds 秒后播放 $nextTitle',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: (tv ? textTheme.titleMedium : textTheme.titleSmall)!
+                  .copyWith(
+                    color: CinemaColors.text0,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton(onPressed: onCancel, child: const Text('取消')),
+                const SizedBox(width: 8),
+                FilledButton(
+                  autofocus: tv,
+                  onPressed: onPlayNow,
+                  child: const Text('立即播放'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 播放信息浮层（Stats for Nerds）数据结构。
+class PlayerStatsInfo {
+  const PlayerStatsInfo({
+    required this.resolution,
+    required this.videoCodec,
+    required this.audioCodec,
+    required this.hwdec,
+    required this.rate,
+    required this.bufferAhead,
+  });
+
+  final String resolution;
+  final String videoCodec;
+  final String audioCodec;
+  final String hwdec;
+  final double rate;
+  final Duration bufferAhead;
+}
+
+/// 画面左上角的紧凑半透明播放信息浮层，不拦截任何手势与点击。
+class PlayerStatsOverlay extends StatelessWidget {
+  const PlayerStatsOverlay({super.key, required this.stats});
+
+  final PlayerStatsInfo stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final labelStyle = textTheme.labelSmall!.copyWith(
+      color: CinemaColors.text2,
+    );
+    final valueStyle = textTheme.labelSmall!.copyWith(
+      color: CinemaColors.text0,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    Widget row(String label, String value) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(width: 56, child: Text(label, style: labelStyle)),
+          Flexible(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: valueStyle,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return IgnorePointer(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 280),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: CinemaColors.scrim,
+          borderRadius: BorderRadius.circular(CinemaRadius.card),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            row('分辨率', stats.resolution),
+            row('视频', stats.videoCodec),
+            row('音频', stats.audioCodec),
+            row('硬解', stats.hwdec),
+            row('倍速', '${_rateLabel(stats.rate)}×'),
+            row('缓冲', '${stats.bufferAhead.inSeconds} 秒'),
+          ],
+        ),
+      ),
+    );
+  }
+}

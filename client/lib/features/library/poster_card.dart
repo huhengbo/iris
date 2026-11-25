@@ -70,7 +70,11 @@ class PosterCard extends ConsumerWidget {
       semanticLabel: [
         media.title,
         ?subtitle,
-        if (media.watched) '已看',
+        if (media.watched)
+          '已看'
+        else if (media.kind == MediaKind.series &&
+            (media.unwatchedCount ?? 0) > 0)
+          '未看 ${media.unwatchedCount} 集',
       ].join('，'),
       onTap: onSelect ?? () => openDetail(context, media, heroTag),
       // 所有人都能用长按打开同一个菜单；多选时点按是勾选，不弹菜单
@@ -86,7 +90,13 @@ class PosterCard extends ConsumerWidget {
               highlight: highlight,
               radius: CinemaRadius.poster,
               dimmed: media.watched,
-              badge: media.watched ? const WatchedBadge() : null,
+              badge: media.watched
+                  ? const WatchedBadge()
+                  : onSelect == null &&
+                        media.kind == MediaKind.series &&
+                        (media.unwatchedCount ?? 0) > 0
+                  ? UnwatchedCountBadge(count: media.unwatchedCount!)
+                  : null,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -162,8 +172,9 @@ class PosterCard extends ConsumerWidget {
 Future<void> openCardActions(
   BuildContext context,
   WidgetRef ref,
-  MediaCard media,
-) async {
+  MediaCard media, {
+  bool withRemoveResume = false,
+}) async {
   final MediaDetail detail;
   try {
     detail = await ref.read(mediaDetailProvider(media.id).future);
@@ -178,6 +189,7 @@ Future<void> openCardActions(
     media,
     detail: detail,
     withWatchlist: true,
+    withRemoveResume: withRemoveResume,
   );
 }
 
@@ -233,62 +245,66 @@ class _PosterOverlayState extends ConsumerState<_PosterOverlay> {
     final reduced = Motion.reduced(context);
     final lifted = _hovered && !tileFocused && !reduced;
     final admin = ref.watch(authControllerProvider).value?.isAdmin == true;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: Focus(
-        canRequestFocus: false,
-        skipTraversal: true,
-        onFocusChange: (v) {
-          if (v != _focusWithin) setState(() => _focusWithin = v);
-        },
-        child: AnimatedScale(
-          scale: tileFocused && !reduced ? 1.08 : 1,
-          duration: reduced ? Duration.zero : Motion.focus,
-          curve: Motion.emphasized,
-          child: LayoutBuilder(
-            builder: (context, constraints) => Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Focus(
-                  canRequestFocus: false,
-                  skipTraversal: true,
-                  onFocusChange: (v) {
-                    if (v != _tileFocused) setState(() => _tileFocused = v);
-                  },
-                  child: widget.tileBuilder(_hovered),
-                ),
-                if (_actionsBuilt)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    top: 0,
-                    // 海报是 2:3，操作层只盖住海报，不盖片名
-                    height: constraints.maxWidth * 1.5,
-                    child: AnimatedContainer(
-                      duration: reduced ? Duration.zero : Motion.focus,
-                      curve: Motion.emphasized,
-                      transform: Matrix4.translationValues(
-                        0,
-                        lifted ? -4 : 0,
-                        0,
-                      ),
-                      child: IgnorePointer(
-                        ignoring: !visible,
-                        child: AnimatedOpacity(
-                          opacity: visible ? 1 : 0,
-                          duration: Motion.focus,
-                          curve: Motion.emphasized,
-                          child: _PosterActions(
-                            media: widget.media,
-                            heroTag: widget.heroTag,
-                            admin: admin,
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onSecondaryTapUp: (_) => openCardActions(context, ref, widget.media),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          onFocusChange: (v) {
+            if (v != _focusWithin) setState(() => _focusWithin = v);
+          },
+          child: AnimatedScale(
+            scale: tileFocused && !reduced ? 1.08 : 1,
+            duration: reduced ? Duration.zero : Motion.focus,
+            curve: Motion.emphasized,
+            child: LayoutBuilder(
+              builder: (context, constraints) => Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Focus(
+                    canRequestFocus: false,
+                    skipTraversal: true,
+                    onFocusChange: (v) {
+                      if (v != _tileFocused) setState(() => _tileFocused = v);
+                    },
+                    child: widget.tileBuilder(_hovered),
+                  ),
+                  if (_actionsBuilt)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      // 海报是 2:3，操作层只盖住海报，不盖片名
+                      height: constraints.maxWidth * 1.5,
+                      child: AnimatedContainer(
+                        duration: reduced ? Duration.zero : Motion.focus,
+                        curve: Motion.emphasized,
+                        transform: Matrix4.translationValues(
+                          0,
+                          lifted ? -4 : 0,
+                          0,
+                        ),
+                        child: IgnorePointer(
+                          ignoring: !visible,
+                          child: AnimatedOpacity(
+                            opacity: visible ? 1 : 0,
+                            duration: Motion.focus,
+                            curve: Motion.emphasized,
+                            child: _PosterActions(
+                              media: widget.media,
+                              heroTag: widget.heroTag,
+                              admin: admin,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -451,7 +467,7 @@ class _PosterActionsState extends ConsumerState<_PosterActions> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _OverlayButton(
+                  CardOverlayButton(
                     buttonKey: const ValueKey('poster-watched'),
                     tooltip: _watched ? '标记未看' : '标记已看',
                     icon: _watched
@@ -463,7 +479,7 @@ class _PosterActionsState extends ConsumerState<_PosterActions> {
                   ),
                   if (widget.admin) ...[
                     const SizedBox(width: 4),
-                    _OverlayButton(
+                    CardOverlayButton(
                       buttonKey: const ValueKey('poster-edit'),
                       tooltip: '编辑',
                       icon: Icons.edit_outlined,
@@ -473,7 +489,7 @@ class _PosterActionsState extends ConsumerState<_PosterActions> {
                     ),
                   ],
                   const SizedBox(width: 4),
-                  _OverlayButton(
+                  CardOverlayButton(
                     buttonKey: const ValueKey('poster-menu'),
                     tooltip: '更多操作',
                     icon: Icons.more_horiz,
@@ -490,9 +506,10 @@ class _PosterActionsState extends ConsumerState<_PosterActions> {
   }
 }
 
-/// 操作层底部的圆形图标按钮：scrim 底，压在任意海报上都看得清。
-class _OverlayButton extends StatelessWidget {
-  const _OverlayButton({
+/// 操作层底部的圆形图标按钮：scrim 底，压在任意海报/剧照上都看得清。
+class CardOverlayButton extends StatelessWidget {
+  const CardOverlayButton({
+    super.key,
     required this.buttonKey,
     required this.tooltip,
     required this.icon,
@@ -556,6 +573,32 @@ class WatchedBadge extends StatelessWidget {
         shape: BoxShape.circle,
       ),
       child: const Icon(Icons.check, size: 15, color: CinemaColors.amber),
+    );
+  }
+}
+
+/// 剧集未看集数胶囊角标，压在海报右上角。
+class UnwatchedCountBadge extends StatelessWidget {
+  const UnwatchedCountBadge({super.key, required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: CinemaColors.scrim,
+        borderRadius: BorderRadius.circular(CinemaRadius.pill),
+      ),
+      child: Text(
+        '$count',
+        style: Theme.of(context).textTheme.labelSmall!.copyWith(
+          color: CinemaColors.text0,
+          fontWeight: FontWeight.w700,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
     );
   }
 }

@@ -79,6 +79,8 @@ class ItemCardOut(Out):
     backdrop: list[ImageOut]
     # 电影已看；剧集的全部集都已看。只反映当前用户自己的标记
     watched: bool
+    # 剧集尚未标记已看的可用单集数（全看完时为 0）；电影为 null
+    unwatched_count: int | None
 
 
 class SearchPersonOut(Out):
@@ -435,7 +437,7 @@ def list_library_items(
     # 只看稍后观看里的条目；不传时不过滤
     watchlist: bool | None = None,
     status: ProblemStatus | None = None,
-    # 按名称排序时的 A-Z 跳转：拉丁字母或 #（非拉丁字母）
+    # 按名称排序时的 A-Z 跳转：拉丁字母、中文拼音首字母，或 #（数字、符号等）
     letter: Annotated[str | None, Query(pattern="^[A-Za-z#]$")] = None,
     offset: Offset = 0,
     limit: Limit = DEFAULT_PAGE_SIZE,

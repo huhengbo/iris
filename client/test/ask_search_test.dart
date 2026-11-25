@@ -427,4 +427,92 @@ void main() {
     expect(find.text('AI 理解为'), findsOneWidget);
     expect(find.text('去对话继续问'), findsNothing);
   });
+
+  testWidgets(
+    'editing years, rating, runtime and genres uses friendly pickers',
+    (tester) async {
+      await pumpSearch(
+        tester,
+        query: _question,
+        setup: (api) {
+          api.on(
+            'POST /api/ai/ask-search',
+            asked(
+              understood: {
+                'genres': ['喜剧'],
+                'year_from': 2000,
+                'min_rating': 7.5,
+                'max_runtime': 120,
+              },
+            ),
+          );
+          api.on(
+            'POST /api/ai/ask-search/query',
+            asked(
+              understood: {
+                'genres': ['喜剧', '科幻'],
+                'year_from': 2020,
+                'min_rating': 8.5,
+                'max_runtime': 90,
+              },
+            ),
+          );
+        },
+      );
+
+      // 年份预设选择
+      await tester.tap(find.widgetWithText(InputChip, '2000 年后'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('2020 年以后'), findsOneWidget);
+      expect(find.text('自定义年份…'), findsOneWidget);
+      await tester.tap(find.text('2020 年以后'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        (api.bodies['POST /api/ai/ask-search/query']! as Map)['filters'],
+        containsPair('year_from', 2020),
+      );
+
+      // 评分预设选择
+      await tester.tap(find.widgetWithText(InputChip, '评分 7.5+'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('8.5 分以上'), findsOneWidget);
+      await tester.tap(find.text('8.5 分以上'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        (api.bodies['POST /api/ai/ask-search/query']! as Map)['filters'],
+        containsPair('min_rating', 8.5),
+      );
+
+      // 时长预设选择
+      await tester.tap(find.widgetWithText(InputChip, '2 小时内'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('90 分钟以内'), findsOneWidget);
+      await tester.tap(find.text('90 分钟以内'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        (api.bodies['POST /api/ai/ask-search/query']! as Map)['filters'],
+        containsPair('max_runtime', 90),
+      );
+
+      // 类型多选胶囊
+      await tester.tap(find.widgetWithText(InputChip, '喜剧'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.widgetWithText(FilterChip, '科幻'));
+      await tester.pump();
+      await tester.tap(find.text('应用'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        (api.bodies['POST /api/ai/ask-search/query']! as Map)['filters'],
+        containsPair('genres', ['喜剧', '科幻']),
+      );
+    },
+  );
 }

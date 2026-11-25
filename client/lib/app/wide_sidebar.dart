@@ -422,10 +422,35 @@ class _LibraryRowState extends ConsumerState<_LibraryRow> {
     if (mounted) showSnack(context, '已删除资料库「${library.name}」');
   }
 
+  List<PopupMenuEntry<_LibraryAction>> _menuItems() => const [
+    PopupMenuItem(value: _LibraryAction.sync, child: Text('同步此资料库')),
+    PopupMenuItem(value: _LibraryAction.refresh, child: Text('刷新元数据')),
+    PopupMenuItem(value: _LibraryAction.edit, child: Text('编辑资料库')),
+    PopupMenuItem(value: _LibraryAction.recommendations, child: Text('管理推荐')),
+    PopupMenuItem(value: _LibraryAction.delete, child: Text('删除')),
+  ];
+
+  Future<void> _showContextMenu(Offset globalPosition) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+    final selected = await showMenu<_LibraryAction>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 0, 0),
+        Offset.zero & overlay.size,
+      ),
+      items: _menuItems(),
+    );
+    if (selected != null && mounted) {
+      await _run(selected);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final library = widget.library;
-    return _SideItem(
+    final row = _SideItem(
       focusNode: widget.focusNode,
       icon: library.kind == MediaKind.series
           ? Icons.tv_outlined
@@ -446,24 +471,15 @@ class _LibraryRowState extends ConsumerState<_LibraryRow> {
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               onSelected: _run,
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: _LibraryAction.sync,
-                  child: Text('同步此资料库'),
-                ),
-                PopupMenuItem(
-                  value: _LibraryAction.refresh,
-                  child: Text('刷新元数据'),
-                ),
-                PopupMenuItem(value: _LibraryAction.edit, child: Text('编辑资料库')),
-                PopupMenuItem(
-                  value: _LibraryAction.recommendations,
-                  child: Text('管理推荐'),
-                ),
-                PopupMenuItem(value: _LibraryAction.delete, child: Text('删除')),
-              ],
+              itemBuilder: (_) => _menuItems(),
             )
           : null,
+    );
+    if (!widget.isAdmin) return row;
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onSecondaryTapUp: (details) => _showContextMenu(details.globalPosition),
+      child: row,
     );
   }
 }

@@ -89,6 +89,7 @@ class MediaCard {
     this.poster = Artwork.none,
     this.backdrop = Artwork.none,
     this.watched = false,
+    this.unwatchedCount,
   });
 
   factory MediaCard.fromJson(Map<String, dynamic> json, String baseUrl) =>
@@ -105,6 +106,7 @@ class MediaCard {
         poster: Artwork.fromJson(json['poster'], baseUrl),
         backdrop: Artwork.fromJson(json['backdrop'], baseUrl),
         watched: json['watched'] as bool,
+        unwatchedCount: json['unwatched_count'] as int?,
       );
 
   final int id;
@@ -125,6 +127,9 @@ class MediaCard {
 
   /// 当前用户看过：电影标记了已看，剧集的每一集都标记了已看
   final bool watched;
+
+  /// 剧集尚未标记已看的可用单集数（全看完时为 0）；电影为 null
+  final int? unwatchedCount;
 }
 
 class SearchPersonResult {

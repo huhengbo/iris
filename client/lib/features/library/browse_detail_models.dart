@@ -261,6 +261,7 @@ class MediaDetail {
     this.overview,
     this.contentRating,
     this.releaseDate,
+    this.logo = Artwork.none,
     required this.studios,
     required this.countries,
     required this.directors,
@@ -281,6 +282,7 @@ class MediaDetail {
         overview: json['overview'] as String?,
         contentRating: json['content_rating'] as String?,
         releaseDate: json['release_date'] as String?,
+        logo: Artwork.fromJson(json['logo'], baseUrl),
         studios: _strings(json['studios']),
         countries: _strings(json['countries']),
         directors: [
@@ -320,6 +322,7 @@ class MediaDetail {
 
   /// 上映日期，`YYYY-MM-DD`
   final String? releaseDate;
+  final Artwork logo;
 
   /// 制作公司和制作国家，只用于展示
   final List<String> studios;

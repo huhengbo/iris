@@ -8,6 +8,20 @@ const seekForwardStep = Duration(seconds: 10);
 /// 播放速度选项，设置面板按这个顺序列
 const _rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
+/// 字幕字号缩放档位
+const subtitleScaleOptions = <({String label, double value})>[
+  (label: '小', value: 0.8),
+  (label: '中', value: 1.0),
+  (label: '大', value: 1.25),
+];
+
+/// 字幕底部位置档位（距离底边的逻辑像素）
+const subtitleBottomPaddingOptions = <({String label, double value})>[
+  (label: '偏下', value: 16.0),
+  (label: '适中', value: 28.0),
+  (label: '偏上', value: 52.0),
+];
+
 /// 双击位置决定这次跳多少：左侧后退、右侧前进，中间返回 null（切换播放暂停）。
 /// 秒数和底栏的两个按钮一致。
 Duration? doubleTapSeek(double x, double width) {
@@ -61,12 +75,15 @@ class PlayerControls extends StatelessWidget {
     this.locked = false,
     this.episodic = false,
     this.buffer = Duration.zero,
+    this.chapters = const [],
     this.onPrevious,
     this.onNext,
     this.onEpisodes,
     this.onRotate,
     this.onToggleFill,
     this.onToggleLock,
+    this.onSkipIntro,
+    this.now,
   });
 
   final bool tv;
@@ -77,6 +94,7 @@ class PlayerControls extends StatelessWidget {
   final Duration position;
   final Duration duration;
   final Duration buffer;
+  final List<PlayerChapter> chapters;
   final bool playing;
 
   /// 当前平台能把播放地址交给电视时才显示投屏按钮
@@ -119,6 +137,12 @@ class PlayerControls extends StatelessWidget {
   final VoidCallback? onRotate;
   final VoidCallback? onToggleFill;
   final VoidCallback? onToggleLock;
+
+  /// 跳过片头快捷操作
+  final VoidCallback? onSkipIntro;
+
+  /// 当前系统时间（测试注入用，默认取 DateTime.now）
+  final DateTime? now;
 
   @override
   Widget build(BuildContext context) {
@@ -167,6 +191,10 @@ class PlayerControls extends StatelessWidget {
                               child: _TopBar(
                                 tv: tv,
                                 title: title,
+                                position: position,
+                                duration: duration,
+                                rate: rate,
+                                now: now,
                                 castable: castable,
                                 onClose: onClose,
                                 onCast: onCast,
@@ -215,11 +243,34 @@ class PlayerControls extends StatelessWidget {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  if (onSkipIntro != null &&
+                                      shouldShowSkipIntro(
+                                        visible: visible,
+                                        locked: locked,
+                                        episodic: episodic,
+                                        position: position,
+                                        duration: duration,
+                                        chapters: chapters,
+                                      ))
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: 8,
+                                          bottom: 6,
+                                        ),
+                                        child: _SkipIntroButton(
+                                          tv: tv,
+                                          onPressed: onSkipIntro!,
+                                        ),
+                                      ),
+                                    ),
                                   _SeekRow(
                                     tv: tv,
                                     position: position,
                                     duration: duration,
                                     buffer: buffer,
+                                    chapters: chapters,
                                     seekFocus: seekFocus,
                                     onScrubBy: onScrubBy,
                                     onScrubStart: onScrubStart,
@@ -257,20 +308,28 @@ class PlayerControls extends StatelessWidget {
   }
 }
 
-/// 顶栏：返回、片名、投屏、设置。剧集的片名由 [PlayerArgs.displayTitle]
-/// 写成「剧名 · 第 1 季 第 2 集」。
+/// 顶栏：返回、片名、系统时间与预计结束时间、投屏、设置。剧集的片名由
+/// [PlayerArgs.displayTitle] 写成「剧名 · 第 1 季 第 2 集」。
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.tv,
     required this.title,
+    required this.position,
+    required this.duration,
+    required this.rate,
     required this.castable,
     required this.onClose,
     required this.onCast,
     required this.onOpenSettings,
+    this.now,
   });
 
   final bool tv;
   final String title;
+  final Duration position;
+  final Duration duration;
+  final double rate;
+  final DateTime? now;
   final bool castable;
   final VoidCallback onClose;
   final VoidCallback onCast;
@@ -280,41 +339,182 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final iconSize = tv ? 30.0 : 24.0;
-    return Row(
-      children: [
-        _ControlButton(
-          tv: tv,
-          icon: Icons.arrow_back_ios_new_rounded,
-          iconSize: iconSize,
-          tooltip: '返回',
-          onPressed: onClose,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showClock = tv || constraints.maxWidth >= 480;
+        return Row(
+          children: [
+            _ControlButton(
+              tv: tv,
+              icon: Icons.arrow_back_ios_new_rounded,
+              iconSize: iconSize,
+              tooltip: '返回',
+              onPressed: onClose,
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: (tv ? textTheme.headlineSmall : textTheme.titleMedium)!
+                    .copyWith(color: CinemaColors.text0),
+              ),
+            ),
+            if (showClock)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: _TopClock(
+                  tv: tv,
+                  position: position,
+                  duration: duration,
+                  rate: rate,
+                  now: now,
+                ),
+              ),
+            if (castable)
+              _ControlButton(
+                tv: tv,
+                icon: Icons.cast_rounded,
+                iconSize: iconSize,
+                tooltip: '投屏到电视',
+                onPressed: onCast,
+              ),
+            _ControlButton(
+              tv: tv,
+              icon: Icons.settings_rounded,
+              iconSize: iconSize,
+              tooltip: '播放设置',
+              onPressed: onOpenSettings,
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TopClock extends StatelessWidget {
+  const _TopClock({
+    required this.tv,
+    required this.position,
+    required this.duration,
+    required this.rate,
+    this.now,
+  });
+
+  final bool tv;
+  final Duration position;
+  final Duration duration;
+  final double rate;
+  final DateTime? now;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final text = formatTopBarTime(
+      now ?? DateTime.now(),
+      position: position,
+      duration: duration,
+      rate: rate,
+    );
+    return Text(
+      text,
+      style: (tv ? textTheme.titleSmall : textTheme.bodySmall)!.copyWith(
+        color: CinemaColors.text2,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+    );
+  }
+}
+
+/// 进度条上方右侧的「跳过片头」轻量 scrim 胶囊按钮。
+class _SkipIntroButton extends StatefulWidget {
+  const _SkipIntroButton({required this.tv, required this.onPressed});
+
+  final bool tv;
+  final VoidCallback onPressed;
+
+  @override
+  State<_SkipIntroButton> createState() => _SkipIntroButtonState();
+}
+
+class _SkipIntroButtonState extends State<_SkipIntroButton> {
+  bool _focused = false;
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduced = Motion.reduced(context);
+    final foreground = _focused ? CinemaColors.amberInk : CinemaColors.text0;
+    final background = _focused
+        ? CinemaColors.amber
+        : _hovered
+        ? Color.alphaBlend(CinemaColors.hover, CinemaColors.scrim)
+        : CinemaColors.scrim;
+    return FocusableActionDetector(
+      mouseCursor: SystemMouseCursors.click,
+      onShowFocusHighlight: (v) => setState(() => _focused = v),
+      onShowHoverHighlight: (v) => setState(() => _hovered = v),
+      actions: {
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onPressed();
+            return null;
+          },
         ),
-        const SizedBox(width: 4),
-        Expanded(
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: (tv ? textTheme.headlineSmall : textTheme.titleMedium)!
-                .copyWith(color: CinemaColors.text0),
+        ButtonActivateIntent: CallbackAction<ButtonActivateIntent>(
+          onInvoke: (_) {
+            widget.onPressed();
+            return null;
+          },
+        ),
+      },
+      child: Semantics(
+        button: true,
+        label: '跳过片头',
+        excludeSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onPressed,
+          child: PressScale(
+            child: AnimatedScale(
+              scale: _focused && !reduced ? 1.06 : 1,
+              duration: reduced ? Duration.zero : Motion.focus,
+              curve: Motion.emphasized,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: widget.tv ? 16 : 14,
+                  vertical: widget.tv ? 8 : 6,
+                ),
+                decoration: BoxDecoration(
+                  color: background,
+                  borderRadius: BorderRadius.circular(CinemaRadius.pill),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.fast_forward_rounded,
+                      size: widget.tv ? 20 : 18,
+                      color: foreground,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '跳过片头',
+                      style:
+                          (widget.tv
+                                  ? Theme.of(context).textTheme.titleSmall
+                                  : Theme.of(context).textTheme.labelMedium)!
+                              .copyWith(color: foreground),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
-        if (castable)
-          _ControlButton(
-            tv: tv,
-            icon: Icons.cast_rounded,
-            iconSize: iconSize,
-            tooltip: '投屏到电视',
-            onPressed: onCast,
-          ),
-        _ControlButton(
-          tv: tv,
-          icon: Icons.settings_rounded,
-          iconSize: iconSize,
-          tooltip: '播放设置',
-          onPressed: onOpenSettings,
-        ),
-      ],
+      ),
     );
   }
 }
@@ -652,12 +852,14 @@ class _SeekRow extends StatelessWidget {
     required this.onScrubStart,
     required this.onScrub,
     required this.onScrubEnd,
+    this.chapters = const [],
   });
 
   final bool tv;
   final Duration position;
   final Duration duration;
   final Duration buffer;
+  final List<PlayerChapter> chapters;
   final FocusNode seekFocus;
   final ValueChanged<Duration> onScrubBy;
   final VoidCallback onScrubStart;
@@ -670,6 +872,7 @@ class _SeekRow extends StatelessWidget {
     final buffered = max > 0
         ? buffer.inMilliseconds.clamp(0, max).toDouble()
         : 0.0;
+    const sliderPadding = 12.0;
     return Row(
       children: [
         _TimeText(formatPlayerClock(position), tv: tv),
@@ -681,41 +884,97 @@ class _SeekRow extends StatelessWidget {
                   position: position,
                   duration: duration,
                   buffer: buffer,
+                  chapters: chapters,
                   onSeekBy: onScrubBy,
                 )
               // 触屏直接拖；遥控器用左右键快进快退，滑块不参与焦点移动。
               // 固定高度：Stack 里的 Align 给的是松约束，不固定的话滑块会撑满整屏
               : SizedBox(
                   height: 40,
-                  child: ExcludeFocus(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 3,
-                        activeTrackColor: CinemaColors.amber,
-                        secondaryActiveTrackColor: CinemaColors.text0
-                            .withValues(alpha: .45),
-                        inactiveTrackColor: CinemaColors.track,
-                        thumbColor: CinemaColors.amber,
-                        overlayColor: CinemaColors.amberSoft,
-                        thumbShape: const RoundSliderThumbShape(
-                          enabledThumbRadius: 7,
-                        ),
-                      ),
-                      child: Slider(
-                        max: max > 0 ? max : 1,
-                        value: max > 0
-                            ? position.inMilliseconds.clamp(0, max).toDouble()
-                            : 0,
-                        secondaryTrackValue: max > 0 && buffered > 0
-                            ? buffered
-                            : null,
-                        onChangeStart: max > 0 ? (_) => onScrubStart() : null,
-                        onChanged: max > 0
-                            ? (v) => onScrub(Duration(milliseconds: v.round()))
-                            : null,
-                        onChangeEnd: max > 0 ? (_) => onScrubEnd() : null,
-                      ),
-                    ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final trackWidth =
+                          (constraints.maxWidth - sliderPadding * 2).clamp(
+                            0.0,
+                            double.infinity,
+                          );
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          ExcludeFocus(
+                            child: SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                trackHeight: 3,
+                                activeTrackColor: CinemaColors.amber,
+                                secondaryActiveTrackColor: CinemaColors.text0
+                                    .withValues(alpha: .45),
+                                inactiveTrackColor: CinemaColors.track,
+                                thumbColor: CinemaColors.amber,
+                                overlayColor: CinemaColors.amberSoft,
+                                thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 7,
+                                ),
+                              ),
+                              child: Slider(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: sliderPadding,
+                                ),
+                                max: max > 0 ? max : 1,
+                                value: max > 0
+                                    ? position.inMilliseconds
+                                          .clamp(0, max)
+                                          .toDouble()
+                                    : 0,
+                                secondaryTrackValue: max > 0 && buffered > 0
+                                    ? buffered
+                                    : null,
+                                onChangeStart: max > 0
+                                    ? (_) => onScrubStart()
+                                    : null,
+                                onChanged: max > 0
+                                    ? (v) => onScrub(
+                                        Duration(milliseconds: v.round()),
+                                      )
+                                    : null,
+                                onChangeEnd: max > 0
+                                    ? (_) => onScrubEnd()
+                                    : null,
+                              ),
+                            ),
+                          ),
+                          if (max > 0 && chapters.isNotEmpty)
+                            IgnorePointer(
+                              child: Stack(
+                                alignment: Alignment.centerLeft,
+                                children: [
+                                  for (final chapter in chapters)
+                                    if (chapter.start > Duration.zero &&
+                                        chapter.start < duration)
+                                      Positioned(
+                                        left:
+                                            sliderPadding +
+                                            trackWidth *
+                                                (chapter.start.inMilliseconds /
+                                                    max) -
+                                            1.5,
+                                        child: Container(
+                                          width: 3,
+                                          height: 6,
+                                          decoration: BoxDecoration(
+                                            color: CinemaColors.text0
+                                                .withValues(alpha: .8),
+                                            borderRadius: BorderRadius.circular(
+                                              CinemaRadius.pill,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      );
+                    },
                   ),
                 ),
         ),
@@ -759,6 +1018,19 @@ Future<void> showPlayerSettings(
   required ValueChanged<double> onRate,
   required ValueChanged<bool> onFill,
   required Future<void> Function() onSearchSubtitles,
+  double subtitleScale = 1.0,
+  double subtitleBottomPadding = 28.0,
+  double subtitleDelay = 0.0,
+  bool autoNext = true,
+  bool showStats = false,
+  List<PlayerChapter> chapters = const [],
+  Duration position = Duration.zero,
+  ValueChanged<double>? onSubtitleScale,
+  ValueChanged<double>? onSubtitleBottomPadding,
+  ValueChanged<double>? onSubtitleDelay,
+  ValueChanged<bool>? onAutoNext,
+  ValueChanged<bool>? onShowStats,
+  ValueChanged<PlayerChapter>? onJumpChapter,
   PlayerSettingsSection? only,
 }) => showDialog<void>(
   context: context,
@@ -776,11 +1048,24 @@ Future<void> showPlayerSettings(
           rate: rate,
           fill: fill,
           canSearchSubtitles: canSearchSubtitles,
+          subtitleScale: subtitleScale,
+          subtitleBottomPadding: subtitleBottomPadding,
+          subtitleDelay: subtitleDelay,
+          autoNext: autoNext,
+          showStats: showStats,
+          chapters: chapters,
+          position: position,
           onAudio: onAudio,
           onSubtitle: onSubtitle,
           onRate: onRate,
           onFill: onFill,
           onSearchSubtitles: onSearchSubtitles,
+          onSubtitleScale: onSubtitleScale,
+          onSubtitleBottomPadding: onSubtitleBottomPadding,
+          onSubtitleDelay: onSubtitleDelay,
+          onAutoNext: onAutoNext,
+          onShowStats: onShowStats,
+          onJumpChapter: onJumpChapter,
         ),
       ),
     ),
@@ -797,11 +1082,24 @@ class _PlayerSettings extends StatefulWidget {
     required this.rate,
     required this.fill,
     required this.canSearchSubtitles,
+    required this.subtitleScale,
+    required this.subtitleBottomPadding,
+    required this.subtitleDelay,
+    required this.autoNext,
+    required this.showStats,
+    required this.chapters,
+    required this.position,
     required this.onAudio,
     required this.onSubtitle,
     required this.onRate,
     required this.onFill,
     required this.onSearchSubtitles,
+    this.onSubtitleScale,
+    this.onSubtitleBottomPadding,
+    this.onSubtitleDelay,
+    this.onAutoNext,
+    this.onShowStats,
+    this.onJumpChapter,
   });
 
   final PlayerSettingsSection? only;
@@ -812,11 +1110,24 @@ class _PlayerSettings extends StatefulWidget {
   final double rate;
   final bool fill;
   final bool canSearchSubtitles;
+  final double subtitleScale;
+  final double subtitleBottomPadding;
+  final double subtitleDelay;
+  final bool autoNext;
+  final bool showStats;
+  final List<PlayerChapter> chapters;
+  final Duration position;
   final ValueChanged<AudioTrack> onAudio;
   final ValueChanged<SubtitleTrack?> onSubtitle;
   final ValueChanged<double> onRate;
   final ValueChanged<bool> onFill;
   final Future<void> Function() onSearchSubtitles;
+  final ValueChanged<double>? onSubtitleScale;
+  final ValueChanged<double>? onSubtitleBottomPadding;
+  final ValueChanged<double>? onSubtitleDelay;
+  final ValueChanged<bool>? onAutoNext;
+  final ValueChanged<bool>? onShowStats;
+  final ValueChanged<PlayerChapter>? onJumpChapter;
 
   @override
   State<_PlayerSettings> createState() => _PlayerSettingsState();
@@ -828,11 +1139,28 @@ class _PlayerSettingsState extends State<_PlayerSettings> {
   late String? _subtitleId = widget.subtitleId;
   late double _rate = widget.rate;
   late bool _fill = widget.fill;
+  late double _subtitleScale = widget.subtitleScale;
+  late double _subtitleBottomPadding = widget.subtitleBottomPadding;
+  late double _subtitleDelay = widget.subtitleDelay;
+  late bool _autoNext = widget.autoNext;
+  late bool _showStats = widget.showStats;
 
   /// 搜索要关掉面板再开搜索弹层，不叠两层对话框
   Future<void> _search() async {
     Navigator.of(context).pop();
     await widget.onSearchSubtitles();
+  }
+
+  void _updateDelay(double next) {
+    final rounded = (next * 10).round() / 10;
+    setState(() => _subtitleDelay = rounded);
+    widget.onSubtitleDelay?.call(rounded);
+  }
+
+  static String _formatDelay(double seconds) {
+    if (seconds == 0) return '0.0s';
+    final sign = seconds > 0 ? '+' : '';
+    return '$sign${seconds.toStringAsFixed(1)}s';
   }
 
   @override
@@ -852,6 +1180,7 @@ class _PlayerSettingsState extends State<_PlayerSettings> {
     // 只列一段时标题就是段名，段内不再重复小标题
     Widget? label(PlayerSettingsSection section) =>
         only == null ? _SectionLabel(section.label) : null;
+    final nextChapter = nextChapterAfter(widget.chapters, widget.position);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -908,6 +1237,21 @@ class _PlayerSettingsState extends State<_PlayerSettings> {
                 onTap: () => unawaited(_search()),
               ),
             ),
+          _SubtitleAppearanceControls(
+            scale: _subtitleScale,
+            bottomPadding: _subtitleBottomPadding,
+            delayText: _formatDelay(_subtitleDelay),
+            onScaleChanged: (value) {
+              setState(() => _subtitleScale = value);
+              widget.onSubtitleScale?.call(value);
+            },
+            onBottomPaddingChanged: (value) {
+              setState(() => _subtitleBottomPadding = value);
+              widget.onSubtitleBottomPadding?.call(value);
+            },
+            onDelayStep: (delta) => _updateDelay(_subtitleDelay + delta),
+            onDelayReset: () => _updateDelay(0.0),
+          ),
         ],
         if (shows(PlayerSettingsSection.rate)) ...[
           ?label(PlayerSettingsSection.rate),
@@ -950,8 +1294,212 @@ class _PlayerSettingsState extends State<_PlayerSettings> {
               },
             ),
           ),
+          _ScrollIntoView(
+            child: _SettingsSwitchRow(
+              icon: Icons.skip_next_rounded,
+              title: '自动连播下一集',
+              value: _autoNext,
+              onChanged: (value) {
+                setState(() => _autoNext = value);
+                widget.onAutoNext?.call(value);
+              },
+            ),
+          ),
+          _ScrollIntoView(
+            child: _SettingsSwitchRow(
+              icon: Icons.info_outline_rounded,
+              title: '播放信息',
+              value: _showStats,
+              onChanged: (value) {
+                setState(() => _showStats = value);
+                widget.onShowStats?.call(value);
+              },
+            ),
+          ),
+        ],
+        if (only == null &&
+            widget.chapters.isNotEmpty &&
+            widget.onJumpChapter != null) ...[
+          const _SectionLabel('章节'),
+          if (nextChapter != null)
+            _ScrollIntoView(
+              child: PickerOption(
+                icon: Icons.fast_forward_rounded,
+                title: '下一章节 · ${nextChapter.title}',
+                subtitle: formatPlayerClock(nextChapter.start),
+                onTap: () => widget.onJumpChapter!(nextChapter),
+              ),
+            ),
+          for (final chapter in widget.chapters)
+            _ScrollIntoView(
+              child: PickerOption(
+                title: chapter.title,
+                subtitle: formatPlayerClock(chapter.start),
+                onTap: () => widget.onJumpChapter!(chapter),
+              ),
+            ),
         ],
       ],
+    );
+  }
+}
+
+class _SubtitleAppearanceControls extends StatelessWidget {
+  const _SubtitleAppearanceControls({
+    required this.scale,
+    required this.bottomPadding,
+    required this.delayText,
+    required this.onScaleChanged,
+    required this.onBottomPaddingChanged,
+    required this.onDelayStep,
+    required this.onDelayReset,
+  });
+
+  final double scale;
+  final double bottomPadding;
+  final String delayText;
+  final ValueChanged<double> onScaleChanged;
+  final ValueChanged<double> onBottomPaddingChanged;
+  final ValueChanged<double> onDelayStep;
+  final VoidCallback onDelayReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final labelStyle = textTheme.bodySmall!.copyWith(color: CinemaColors.text2);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              SizedBox(width: 68, child: Text('字幕字号', style: labelStyle)),
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    for (final option in subtitleScaleOptions)
+                      ChoiceChip(
+                        label: Text(option.label),
+                        selected: (scale - option.value).abs() < 0.01,
+                        onSelected: (_) => onScaleChanged(option.value),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              SizedBox(width: 68, child: Text('字幕位置', style: labelStyle)),
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    for (final option in subtitleBottomPaddingOptions)
+                      ChoiceChip(
+                        label: Text(option.label),
+                        selected: (bottomPadding - option.value).abs() < 0.5,
+                        onSelected: (_) => onBottomPaddingChanged(option.value),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              SizedBox(width: 68, child: Text('时间偏移', style: labelStyle)),
+              Expanded(
+                child: Row(
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => onDelayStep(-0.5),
+                      child: const Text('-0.5s'),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Tooltip(
+                        message: '归零',
+                        child: TextButton(
+                          onPressed: onDelayReset,
+                          child: Text(
+                            delayText,
+                            style: textTheme.titleSmall!.copyWith(
+                              color: CinemaColors.text0,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    OutlinedButton(
+                      onPressed: () => onDelayStep(0.5),
+                      child: const Text('+0.5s'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsSwitchRow extends StatelessWidget {
+  const _SettingsSwitchRow({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String title;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return FocusRing(
+      child: SwitchListTile(
+        value: value,
+        onChanged: onChanged,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(CinemaRadius.card)),
+        ),
+        secondary: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: value ? CinemaColors.amberSoft : CinemaColors.surface3,
+            borderRadius: BorderRadius.circular(CinemaRadius.small),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: value ? CinemaColors.amber : CinemaColors.text1,
+          ),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: CinemaColors.text1,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
     );
   }
 }

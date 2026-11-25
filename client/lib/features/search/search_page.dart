@@ -3,19 +3,77 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/shell.dart';
 import '../../app/theme.dart';
 import '../../app/tv.dart';
 import '../../core/api/paging.dart';
 import '../../core/format.dart';
+import '../../core/providers.dart';
 import '../ai/ai_availability.dart';
+import '../auth/auth_controller.dart';
 import '../library/art_image.dart';
 import '../library/browse_api.dart';
 import '../library/poster_card.dart';
 import '../../core/widgets/empty_state.dart';
 import 'ask_search_api.dart';
 import 'ask_search_block.dart';
+
+/// 最近搜索历史的存储位置，按服务器和用户分开，不上传服务器。
+abstract interface class SearchHistoryStorage {
+  Future<List<String>> read();
+  Future<void> write(List<String> items);
+}
+
+class SharedPreferencesSearchHistoryStorage implements SearchHistoryStorage {
+  SharedPreferencesSearchHistoryStorage(String scope)
+    : _key = 'search.history.$scope';
+
+  final String _key;
+
+  @override
+  Future<List<String>> read() async {
+    try {
+      return await SharedPreferencesAsync().getStringList(_key) ?? const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @override
+  Future<void> write(List<String> items) async {
+    try {
+      final prefs = SharedPreferencesAsync();
+      if (items.isEmpty) {
+        await prefs.remove(_key);
+      } else {
+        await prefs.setStringList(_key, items);
+      }
+    } catch (_) {}
+  }
+}
+
+/// 测试用：纯内存搜索历史存储。
+class MemorySearchHistoryStorage implements SearchHistoryStorage {
+  MemorySearchHistoryStorage([List<String> initial = const []])
+    : items = List<String>.of(initial);
+
+  List<String> items;
+
+  @override
+  Future<List<String>> read() async => List<String>.of(items);
+
+  @override
+  Future<void> write(List<String> next) async => items = List<String>.of(next);
+}
+
+final searchHistoryStorageProvider = Provider<SearchHistoryStorage>(
+  (ref) => SharedPreferencesSearchHistoryStorage(
+    '${ref.watch(apiBaseUrlProvider)}#'
+    '${ref.watch(authControllerProvider).value?.id ?? 0}',
+  ),
+);
 
 final searchHistoryProvider =
     NotifierProvider<SearchHistoryNotifier, List<String>>(
@@ -25,26 +83,54 @@ final searchHistoryProvider =
 class SearchHistoryNotifier extends Notifier<List<String>> {
   static const _max = 8;
 
+  bool _mutated = false;
+
   @override
-  List<String> build() => const [];
+  List<String> build() {
+    _mutated = false;
+    final storage = ref.watch(searchHistoryStorageProvider);
+    unawaited(_load(storage));
+    return const [];
+  }
+
+  Future<void> _load(SearchHistoryStorage storage) async {
+    final saved = await storage.read();
+    if (!ref.mounted || _mutated || saved.isEmpty) return;
+    state = saved.take(_max).toList();
+  }
+
+  void _persist(List<String> next) {
+    final storage = ref.read(searchHistoryStorageProvider);
+    unawaited(storage.write(next));
+  }
 
   void add(String query) {
     final value = query.trim();
     if (value.isEmpty) return;
-    state = [
+    _mutated = true;
+    final next = [
       value,
       ...state.where((item) => item != value),
     ].take(_max).toList();
+    state = next;
+    _persist(next);
   }
 
   void remove(String query) {
-    state = [
+    _mutated = true;
+    final next = [
       for (final item in state)
         if (item != query) item,
     ];
+    state = next;
+    _persist(next);
   }
 
-  void clear() => state = const [];
+  void clear() {
+    _mutated = true;
+    state = const [];
+    _persist(const []);
+  }
 }
 
 /// 按片名、原名、英文名和演职员姓名搜索当前账号能看到的影片。
@@ -136,42 +222,47 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         (discovery.people.isNotEmpty || discovery.episodes.isNotEmpty);
     final history = ref.watch(searchHistoryProvider);
     final notifier = ref.read(searchResultsProvider(query).notifier);
-    final gutter = CinemaSpacing.gutterFor(
-      wide: MediaQuery.sizeOf(context).width >= wideLayoutBreakpoint,
-    );
+    final wide = MediaQuery.sizeOf(context).width >= wideLayoutBreakpoint;
+    final gutter = CinemaSpacing.gutterFor(wide: wide);
     return Scaffold(
       body: CustomScrollView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         slivers: [
-          SliverAppBar(
-            pinned: true,
-            automaticallyImplyLeading: false,
-            titleSpacing: gutter,
-            toolbarHeight: 64,
-            title: TextField(
-              controller: _controller,
-              autofocus: query.isEmpty,
-              textInputAction: TextInputAction.search,
-              maxLength: 100,
-              onChanged: _onChanged,
-              onSubmitted: _search,
-              decoration: InputDecoration(
-                hintText: '片名、人名、原名或英文名',
-                counterText: '',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: ListenableBuilder(
-                  listenable: _controller,
-                  builder: (_, _) => _controller.text.isEmpty
-                      ? const SizedBox.shrink()
-                      : IconButton(
-                          tooltip: '清除',
-                          onPressed: _clear,
-                          icon: const Icon(Icons.close),
-                        ),
+          // 宽屏统一使用 TopBar 里的搜索框，不再在页面顶部重复渲染一个
+          if (!wide)
+            SliverAppBar(
+              pinned: true,
+              automaticallyImplyLeading: false,
+              titleSpacing: gutter,
+              toolbarHeight: 64,
+              title: TextField(
+                controller: _controller,
+                autofocus: query.isEmpty,
+                textInputAction: TextInputAction.search,
+                maxLength: 100,
+                onChanged: _onChanged,
+                onSubmitted: _search,
+                decoration: InputDecoration(
+                  hintText: '片名、人名、原名或英文名',
+                  counterText: '',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: ListenableBuilder(
+                    listenable: _controller,
+                    builder: (_, _) => _controller.text.isEmpty
+                        ? const SizedBox.shrink()
+                        : IconButton(
+                            tooltip: '清除',
+                            onPressed: _clear,
+                            icon: const Icon(Icons.close),
+                          ),
+                  ),
                 ),
               ),
+            )
+          else
+            const SliverToBoxAdapter(
+              child: SizedBox(height: CinemaSpacing.heading),
             ),
-          ),
           if (query.isEmpty && history.isEmpty)
             const SliverFillRemaining(
               hasScrollBody: false,

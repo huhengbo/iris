@@ -121,6 +121,7 @@ Map<String, dynamic> _movieDetail() => {
   'overview': null,
   'content_rating': null,
   'watchlisted': false,
+  'logo': <Object>[],
   'directors': <Object>[],
   'writers': <Object>[],
   'cast': <Object>[],

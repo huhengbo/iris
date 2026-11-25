@@ -87,6 +87,93 @@ const _languages = {
   'th': '泰语',
 };
 
+/// 从当前版本提取 3–4 个核心技术规格角标；优先用上报过的 [MediaInfo]，
+/// 未上报时再从 [MediaVersion.label] 安全提取常见规格并去重。
+List<String> versionTechBadges(MediaVersion version, {int maxCount = 4}) {
+  final badges = <String>[];
+  void addBadge(String? value) {
+    if (value == null || value.isEmpty || badges.contains(value)) return;
+    if (badges.length >= maxCount) return;
+    badges.add(value);
+  }
+
+  final info = version.media;
+  if (info != null) {
+    addBadge(_resolution(info.width, info.height));
+    addBadge(switch (info.hdr?.toLowerCase()) {
+      'dolby_vision' => '杜比视界',
+      'hdr10+' => 'HDR10+',
+      'hdr10' => 'HDR10',
+      'hlg' => 'HLG',
+      _ => null,
+    });
+    if (info.videoCodec case final codec? when codec.isNotEmpty) {
+      addBadge(_codecs[codec.toLowerCase()] ?? codec.toUpperCase());
+    }
+    if (info.audio.isNotEmpty) {
+      final track = info.audio.firstWhere(
+        (t) => t.isDefault,
+        orElse: () => info.audio.first,
+      );
+      if (track.codec case final codec? when codec.isNotEmpty) {
+        addBadge(_codecs[codec.toLowerCase()] ?? codec.toUpperCase());
+      }
+      if ((track.title ?? '').toLowerCase().contains('atmos')) {
+        addBadge('Atmos');
+      }
+    }
+    return badges;
+  }
+
+  final label = version.label;
+  if (_hasToken(label, r'(?:4k|2160p)')) {
+    addBadge('4K');
+  } else if (_hasToken(label, r'1080p')) {
+    addBadge('1080p');
+  } else if (_hasToken(label, r'720p')) {
+    addBadge('720p');
+  }
+
+  if (label.contains('杜比视界') ||
+      _hasToken(label, r'(?:dolby[\s._-]?vision|dv)')) {
+    addBadge('杜比视界');
+  } else if (_hasToken(label, r'hdr10\+')) {
+    addBadge('HDR10+');
+  } else if (_hasToken(label, r'hdr10')) {
+    addBadge('HDR10');
+  } else if (_hasToken(label, r'hlg')) {
+    addBadge('HLG');
+  } else if (_hasToken(label, r'hdr')) {
+    addBadge('HDR');
+  }
+
+  if (_hasToken(label, r'(?:hevc|x265|h\.?265)')) {
+    addBadge('HEVC');
+  } else if (_hasToken(label, r'(?:h\.?264|x264|avc)')) {
+    addBadge('H.264');
+  } else if (_hasToken(label, r'av1')) {
+    addBadge('AV1');
+  }
+
+  if (_hasToken(label, r'atmos')) {
+    addBadge('Atmos');
+  }
+  if (_hasToken(label, r'truehd')) {
+    addBadge('TrueHD');
+  } else if (_hasToken(label, r'dts(?:[\s._-]?(?:hd|ma|x))?')) {
+    addBadge('DTS');
+  } else if (_hasToken(label, r'(?:e[\s._-]?ac[\s._-]?3|ddp|dd\+)')) {
+    addBadge('E-AC3');
+  }
+
+  return badges;
+}
+
+bool _hasToken(String input, String pattern) => RegExp(
+  '(?:^|[^a-z0-9])$pattern(?=\$|[^a-z0-9])',
+  caseSensitive: false,
+).hasMatch(input);
+
 /// mpv 的编码名到常见叫法，没列出的转大写
 const _codecs = {
   'h264': 'H.264',
@@ -94,6 +181,7 @@ const _codecs = {
   'mpeg2video': 'MPEG-2',
   'eac3': 'E-AC3',
   'truehd': 'TrueHD',
+  'dca': 'DTS',
   'opus': 'Opus',
   'vorbis': 'Vorbis',
   'subrip': 'SRT',

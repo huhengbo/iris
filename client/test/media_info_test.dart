@@ -191,4 +191,79 @@ void main() {
       expect(languageName('swe'), 'swe');
     });
   });
+
+  group('versionTechBadges', () {
+    test('prefers MediaInfo fields and caps at 4 badges', () {
+      const version = MediaVersion(
+        id: 1,
+        label: '1080p · WEB-DL',
+        subtitles: [],
+        media: MediaInfo(
+          width: 3840,
+          height: 1608,
+          videoCodec: 'hevc',
+          hdr: 'dolby_vision',
+          audio: [
+            MediaAudio(
+              codec: 'truehd',
+              title: 'TrueHD Atmos 7.1',
+              isDefault: true,
+            ),
+          ],
+        ),
+      );
+      expect(versionTechBadges(version), ['4K', '杜比视界', 'HEVC', 'TrueHD']);
+    });
+
+    test('includes Atmos when room remains and maps dca to DTS', () {
+      const version = MediaVersion(
+        id: 2,
+        label: '1080p',
+        subtitles: [],
+        media: MediaInfo(
+          width: 1920,
+          height: 1080,
+          videoCodec: 'h264',
+          audio: [
+            MediaAudio(codec: 'dca', isDefault: false),
+            MediaAudio(
+              codec: 'eac3',
+              title: 'Dolby Digital Plus Atmos',
+              isDefault: true,
+            ),
+          ],
+        ),
+      );
+      expect(versionTechBadges(version), ['1080p', 'H.264', 'E-AC3', 'Atmos']);
+    });
+
+    test('extracts common specs safely from label when media is null', () {
+      expect(
+        versionTechBadges(
+          const MediaVersion(
+            id: 3,
+            label: '2160p · BluRay · DV · x265 · TrueHD · Atmos · 58 GB',
+            subtitles: [],
+          ),
+        ),
+        ['4K', '杜比视界', 'HEVC', 'Atmos'],
+      );
+      expect(
+        versionTechBadges(
+          const MediaVersion(
+            id: 4,
+            label: '1080p · DVD · HDR10 · H.264 · DTS-HD MA',
+            subtitles: [],
+          ),
+        ),
+        ['1080p', 'HDR10', 'H.264', 'DTS'],
+      );
+      expect(
+        versionTechBadges(
+          const MediaVersion(id: 5, label: '未知版本 · 4.2 GB', subtitles: []),
+        ),
+        isEmpty,
+      );
+    });
+  });
 }

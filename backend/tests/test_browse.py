@@ -336,8 +336,13 @@ def test_library_items_sort_filter_and_paging(client: TestClient, catalog: dict[
     assert titles(first) + titles(second) == ["星际穿越", "流浪地球", "疯狂的外星人"]
     card = first["items"][0]
     assert card["kind"] == "movie" and card["year"] == 2014 and card["rating"] == 8.7
+    assert card["unwatched_count"] is None
     assert [p["width"] for p in card["poster"]] == [342, 780]
     assert card["backdrop"][0]["url"].startswith("/api/images/")
+
+    series_wall = get(client, admin, f"/libraries/{catalog['series']}/items")["items"]
+    assert series_wall[0]["title"] == "三体"
+    assert series_wall[0]["unwatched_count"] == 4
 
     response = client.get(f"/api{path}", params={"sort": "random"}, headers=admin)
     assert response.status_code == 422
@@ -380,6 +385,8 @@ def test_movie_detail_has_credits_and_versions(client: TestClient, catalog: dict
     assert detail["overview"] == "流浪地球的简介"
     assert detail["genres"] == ["科幻", "冒险"]
     assert detail["content_rating"] == "PG-13"
+    assert detail["unwatched_count"] is None
+    assert detail["ratings"] == [{"source": "builtin.tmdb", "label": "TMDB", "value": 7.9}]
     assert detail["logo"][0]["url"].startswith("/api/images/")
     assert detail["seasons"] == [] and detail["next_episode"] is None
     # 版本大的在前
@@ -417,6 +424,7 @@ def test_series_detail_seasons_episodes_and_next_episode(
 
     assert detail["versions"] == []
     assert detail["content_rating"] is None
+    assert detail["unwatched_count"] == 4
     # 只列出有文件的季和集，特别篇在最后
     assert [(s["number"], s["episode_count"]) for s in detail["seasons"]] == [
         (1, 2),
@@ -440,6 +448,18 @@ def test_series_detail_seasons_episodes_and_next_episode(
     assert len(episode["versions"]) == 1
     assert episode["versions"][0]["subtitles"] == []
     missing(client, admin, "/seasons/999")
+
+    # 标记单集 / 整季 / 整剧已看时，剧集卡片 unwatched_count 随之变化，全看完时为 0
+    assert client.put(f"/api/episodes/{episode['id']}/watched", headers=admin).status_code == 204
+    assert get(client, admin, f"/items/{detail['id']}")["unwatched_count"] == 3
+    assert client.put(f"/api/seasons/{season['id']}/watched", headers=admin).status_code == 204
+    assert (
+        get(client, admin, f"/libraries/{catalog['series']}/items")["items"][0]["unwatched_count"]
+        == 2
+    )
+    assert client.put(f"/api/items/{detail['id']}/watched", headers=admin).status_code == 204
+    finished = get(client, admin, f"/items/{detail['id']}")
+    assert finished["watched"] is True and finished["unwatched_count"] == 0
 
 
 # ---- 演员页 ----

@@ -4303,6 +4303,17 @@
             "title": "Title",
             "type": "string"
           },
+          "unwatched_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unwatched Count"
+          },
           "watched": {
             "title": "Watched",
             "type": "boolean"
@@ -4331,7 +4342,8 @@
           "runtime",
           "poster",
           "backdrop",
-          "watched"
+          "watched",
+          "unwatched_count"
         ],
         "title": "ItemCardOut",
         "type": "object"
@@ -4573,6 +4585,17 @@
             "title": "Title",
             "type": "string"
           },
+          "unwatched_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unwatched Count"
+          },
           "versions": {
             "items": {
               "$ref": "#/components/schemas/VersionOut"
@@ -4620,6 +4643,7 @@
           "poster",
           "backdrop",
           "watched",
+          "unwatched_count",
           "en_title",
           "release_date",
           "overview",
@@ -6974,6 +6998,17 @@
             "title": "Title",
             "type": "string"
           },
+          "unwatched_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unwatched Count"
+          },
           "watched": {
             "title": "Watched",
             "type": "boolean"
@@ -7003,6 +7038,7 @@
           "poster",
           "backdrop",
           "watched",
+          "unwatched_count",
           "roles",
           "character"
         ],
@@ -24029,6 +24065,62 @@
         "summary": "Related Items",
         "tags": [
           "browse"
+        ]
+      }
+    },
+    "/api/items/{item_id}/resume": {
+      "delete": {
+        "description": "从继续观看和最近播放中移除（保留已看标记和播放事件历史）。",
+        "operationId": "remove_item_resume_api_items__item_id__resume_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "请求参数不合法"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "客户端错误"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "服务端错误"
+          }
+        },
+        "summary": "Remove Item Resume",
+        "tags": [
+          "playback"
         ]
       }
     },

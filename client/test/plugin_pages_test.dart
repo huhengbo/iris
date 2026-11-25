@@ -24,6 +24,7 @@ const _settings = '/api/admin/settings';
 Map<String, dynamic> _plugin({
   String id = 'example.hello',
   String name = '示例插件',
+  String version = '1.0.0',
   String description = '一个用来测试的插件。',
   String category = 'metadata',
   String proxyMode = 'inherit',
@@ -36,7 +37,7 @@ Map<String, dynamic> _plugin({
 }) => {
   'id': id,
   'name': name,
-  'version': '1.0.0',
+  'version': version,
   'sdk_version': '1',
   'provides': ['admin.ui'],
   'requires': ['config', 'secrets'],
@@ -625,5 +626,56 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('详情 example.hello'), findsOneWidget);
+  });
+
+  test('formatPluginVersion 规范化版本前缀和纯数字版本', () {
+    expect(formatPluginVersion('1.0.0'), 'v1.0.0');
+    expect(formatPluginVersion('v1.0.0'), 'v1.0.0');
+    expect(formatPluginVersion('V1.2.3'), 'v1.2.3');
+    expect(formatPluginVersion('vv1.0.0'), 'v1.0.0');
+    expect(formatPluginVersion('1'), 'v1');
+    expect(formatPluginVersion('5'), 'v5');
+    expect(formatPluginVersion('v5'), 'v5');
+    expect(formatPluginVersion('  '), '');
+  });
+
+  testWidgets('插件中心区分运行中与停用/失败状态色并规范化版本号', (tester) async {
+    await pumpAdmin(tester, const PluginsPage(), (api) {
+      api.on('GET $_plugins', {
+        'plugins': [
+          _plugin(
+            id: 'p.running',
+            name: '运行插件',
+            version: 'v1.0.0',
+            state: 'running',
+          ),
+          _plugin(
+            id: 'p.stopped',
+            name: '停止插件',
+            version: '5',
+            enabled: false,
+            state: 'stopped',
+          ),
+          _plugin(
+            id: 'p.failed',
+            name: '失败插件',
+            version: 'vv2.1.0',
+            state: 'failed',
+          ),
+        ],
+      });
+    });
+
+    expect(find.text('v1.0.0'), findsOneWidget);
+    expect(find.text('v5'), findsOneWidget);
+    expect(find.text('v2.1.0'), findsOneWidget);
+    expect(find.textContaining('vv'), findsNothing);
+
+    final runningText = tester.widget<Text>(find.text('运行中'));
+    final stoppedText = tester.widget<Text>(find.text('已停止'));
+    final failedText = tester.widget<Text>(find.text('启动失败'));
+    expect(runningText.style?.color, CinemaColors.success);
+    expect(stoppedText.style?.color, CinemaColors.text2);
+    expect(failedText.style?.color, CinemaColors.error);
   });
 }

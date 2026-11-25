@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import bisect
 import logging
 import os
 import re
@@ -21,6 +22,94 @@ SQLITE_BUSY_TIMEOUT_MS = 60_000
 _SESSION_LOCK = threading.Lock()
 logger = logging.getLogger(__name__)
 _MIGRATION_NAME = re.compile(r"^(\d{4})_([a-z0-9_]+)\.sql$")
+
+# GB2312 一级汉字（0xB0A1–0xD7F9）按拼音有序排列，各区间起点对应字母 A–Z（无 I/U/V）
+_GBK_PINYIN_THRESHOLDS: tuple[tuple[int, str], ...] = (
+    (0xB0A1, "A"),
+    (0xB0C5, "B"),
+    (0xB2C1, "C"),
+    (0xB4EE, "D"),
+    (0xB6EA, "E"),
+    (0xB7A2, "F"),
+    (0xB8C1, "G"),
+    (0xB9FE, "H"),
+    (0xBBF7, "J"),
+    (0xBFA6, "K"),
+    (0xC0AC, "L"),
+    (0xC2E8, "M"),
+    (0xC4C3, "N"),
+    (0xC5B6, "O"),
+    (0xC5BE, "P"),
+    (0xC6DA, "Q"),
+    (0xC8BB, "R"),
+    (0xC8F6, "S"),
+    (0xCBFA, "T"),
+    (0xCDDA, "W"),
+    (0xCEF4, "X"),
+    (0xD1B9, "Y"),
+    (0xD4D1, "Z"),
+)
+_GBK_CODES = tuple(code for code, _ in _GBK_PINYIN_THRESHOLDS)
+_GBK_LETTERS = tuple(letter for _, letter in _GBK_PINYIN_THRESHOLDS)
+# GB2312 一级汉字区间外或常见多音/生僻常用字补充映射
+_EXTRA_PINYIN: dict[str, str] = {
+    "镖": "B",
+    "坂": "B",
+    "蝙": "B",
+    "黛": "D",
+    "嗯": "E",
+    "鳄": "E",
+    "绯": "F",
+    "妃": "F",
+    "蝠": "F",
+    "昊": "H",
+    "嬛": "H",
+    "囧": "J",
+    "岚": "L",
+    "麟": "L",
+    "魅": "M",
+    "喵": "M",
+    "冥": "M",
+    "淼": "M",
+    "琪": "Q",
+    "倩": "Q",
+    "绮": "Q",
+    "麒": "Q",
+    "穹": "Q",
+    "睿": "R",
+    "鲨": "S",
+    "弑": "S",
+    "狩": "S",
+    "曦": "X",
+    "枭": "X",
+    "鑫": "X",
+    "炫": "X",
+    "焱": "Y",
+    "吒": "Z",
+}
+
+
+def title_initial(title: object) -> str:
+    """返回片名用于 A–Z 筛选分组的首字母：ASCII 字母、中文拼音首字母，其余返回 #。"""
+    if not isinstance(title, str):
+        return "#"
+    stripped = title.lstrip()
+    if not stripped:
+        return "#"
+    ch = stripped[0]
+    if "A" <= ch <= "Z" or "a" <= ch <= "z":
+        return ch.upper()
+    if ch in _EXTRA_PINYIN:
+        return _EXTRA_PINYIN[ch]
+    try:
+        encoded = ch.encode("gbk")
+    except UnicodeEncodeError:
+        return "#"
+    if len(encoded) == 2 and 0xA1 <= encoded[1] <= 0xFE:
+        code = (encoded[0] << 8) | encoded[1]
+        if 0xB0A1 <= code <= 0xD7F9:
+            return _GBK_LETTERS[bisect.bisect_right(_GBK_CODES, code) - 1]
+    return "#"
 
 
 @dataclass(frozen=True)
@@ -72,6 +161,7 @@ class Database:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+        connection.create_function("title_initial", 1, title_initial, deterministic=True)
         if configure_wal:
             connection.execute("PRAGMA journal_mode = WAL")
         return connection

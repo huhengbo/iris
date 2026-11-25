@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iris/core/widgets/rail_scroller.dart';
 
@@ -130,4 +131,68 @@ void main() {
     await tester.pump();
     expect(controller.offset, closeTo(320, 1));
   });
+
+  testWidgets(
+    'edge fades reflect scroll availability and Shift+wheel scrolls horizontally',
+    (tester) async {
+      final vertical = ScrollController();
+      final horizontal = ScrollController();
+      addTearDown(vertical.dispose);
+      addTearDown(horizontal.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              controller: vertical,
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: 400,
+                    height: 100,
+                    child: RailScroller(
+                      controller: horizontal,
+                      builder: (context, controller) => ListView.builder(
+                        controller: controller,
+                        scrollDirection: Axis.horizontal,
+                        itemCount: 20,
+                        itemBuilder: (_, i) =>
+                            SizedBox(width: 100, child: Text('$i')),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 1200),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 初始位置：左侧不可后退（opacity 0），右侧可前进（opacity 1）
+      List<double> opacities() => tester
+          .widgetList<AnimatedOpacity>(
+            find.descendant(
+              of: find.byType(RailScroller),
+              matching: find.byType(AnimatedOpacity),
+            ),
+          )
+          .map((w) => w.opacity)
+          .toList();
+      expect(opacities(), [0, 1]);
+
+      // 按住 Shift 滚动滚轮：横向滚动，外层垂直列表不动
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      addTearDown(() => tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft));
+      final pointer = TestPointer(1, PointerDeviceKind.mouse);
+      await tester.sendEventToBinding(pointer.hover(const Offset(200, 50)));
+      await tester.sendEventToBinding(pointer.scroll(const Offset(0, 180)));
+      await tester.pumpAndSettle();
+
+      expect(horizontal.offset, greaterThan(0));
+      expect(vertical.offset, 0);
+      expect(opacities(), [1, 1]);
+    },
+  );
 }

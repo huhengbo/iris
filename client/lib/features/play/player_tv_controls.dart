@@ -9,12 +9,14 @@ class _TvSeekBar extends StatefulWidget {
     required this.duration,
     required this.onSeekBy,
     this.buffer = Duration.zero,
+    this.chapters = const [],
   });
 
   final FocusNode focusNode;
   final Duration position;
   final Duration duration;
   final Duration buffer;
+  final List<PlayerChapter> chapters;
   final void Function(Duration delta) onSeekBy;
 
   @override
@@ -99,6 +101,28 @@ class _TvSeekBarState extends State<_TvSeekBar> {
                     ),
                   ),
                 ),
+                if (total > 0)
+                  for (final chapter in widget.chapters)
+                    if (chapter.start > Duration.zero &&
+                        chapter.start < widget.duration)
+                      Positioned(
+                        left:
+                            (width * (chapter.start.inMilliseconds / total) -
+                                    1.5)
+                                .clamp(0.0, width > 3 ? width - 3 : 0.0),
+                        child: IgnorePointer(
+                          child: Container(
+                            width: 3,
+                            height: trackHeight,
+                            decoration: BoxDecoration(
+                              color: CinemaColors.text0.withValues(alpha: .8),
+                              borderRadius: BorderRadius.circular(
+                                CinemaRadius.pill,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                 Positioned(
                   left: left,
                   child: IgnorePointer(

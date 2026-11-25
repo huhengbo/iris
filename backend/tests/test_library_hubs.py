@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import AppConfig
+from app.db import title_initial
 from tests.conftest import bearer, login
 from tests.fake_cloud115 import FakeCloud115
 from tests.fake_tmdb import FakeTmdb
@@ -148,14 +151,60 @@ def test_watchlist_filter(client: TestClient, catalog: dict[str, int]) -> None:
     assert {row["title"] for row in page["items"]} == {"流浪地球", "疯狂的外星人"}
 
 
+def test_title_initial_maps_ascii_chinese_and_symbols() -> None:
+    assert title_initial("Avatar") == "A"
+    assert title_initial("  batman") == "B"
+    assert title_initial("流浪地球") == "L"
+    assert title_initial("星际穿越") == "X"
+    assert title_initial("疯狂的外星人") == "F"
+    assert title_initial("三体") == "S"
+    assert title_initial("蝙蝠侠") == "B"
+    assert title_initial("囧妈") == "J"
+    assert title_initial("倩女幽魂") == "Q"
+    assert title_initial("2001太空漫游") == "#"
+    assert title_initial("《无名》") == "#"
+    assert title_initial("もののけ姫") == "#"
+    assert title_initial("기생충") == "#"
+    assert title_initial("   ") == "#"
+    assert title_initial(None) == "#"
+
+
 def test_letter_jump_groups_latin_and_other_titles(
-    client: TestClient, catalog: dict[str, int]
+    client: TestClient, config: AppConfig, catalog: dict[str, int]
 ) -> None:
     admin = fresh_admin(client)
     path = f"/libraries/{catalog['movies']}/items"
-    # 三部片的中文片名都归到 #；没有任何拉丁字母开头的条目
-    assert len(get(client, admin, path, sort="name", letter="#")["items"]) == 3
+    # 中文片名按拼音首字母分组：流浪地球 -> L，星际穿越 -> X，疯狂的外星人 -> F
+    assert [i["title"] for i in get(client, admin, path, sort="name", letter="L")["items"]] == [
+        "流浪地球"
+    ]
+    assert [i["title"] for i in get(client, admin, path, sort="name", letter="X")["items"]] == [
+        "星际穿越"
+    ]
+    assert [i["title"] for i in get(client, admin, path, sort="name", letter="F")["items"]] == [
+        "疯狂的外星人"
+    ]
+    assert get(client, admin, path, sort="name", letter="#")["items"] == []
     assert get(client, admin, path, sort="name", letter="A")["items"] == []
+
+    # 改名覆盖 ASCII 字母、GBK 二级常用字和数字/符号开头
+    earth_id = find(client, "流浪地球")["id"]
+    stars_id = find(client, "星际穿越")["id"]
+    alien_id = find(client, "疯狂的外星人")["id"]
+    with sqlite3.connect(config.database_path) as connection:
+        connection.execute("UPDATE media_item SET title = '  avatar' WHERE id = ?", (earth_id,))
+        connection.execute("UPDATE media_item SET title = '蝙蝠侠' WHERE id = ?", (stars_id,))
+        connection.execute("UPDATE media_item SET title = '2001太空漫游' WHERE id = ?", (alien_id,))
+    assert [i["title"] for i in get(client, admin, path, sort="name", letter="a")["items"]] == [
+        "  avatar"
+    ]
+    assert [i["title"] for i in get(client, admin, path, sort="name", letter="B")["items"]] == [
+        "蝙蝠侠"
+    ]
+    assert [i["title"] for i in get(client, admin, path, sort="name", letter="#")["items"]] == [
+        "2001太空漫游"
+    ]
+
     response = client.get(f"/api{path}", params={"letter": "1"}, headers=admin)
     assert response.status_code == 422
 

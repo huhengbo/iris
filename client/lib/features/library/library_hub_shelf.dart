@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 
-import '../../core/widgets/rail_scroller.dart';
+import '../../app/shell.dart' show wideLayoutBreakpoint;
 import '../../app/theme.dart';
 import '../../app/tv.dart';
-import '../../core/format.dart';
+import '../../core/widgets/rail_scroller.dart';
 import 'browse_api.dart';
+import 'continue_watching_card.dart';
 import 'poster_card.dart';
 
 /// 资料库「推荐」标签的一行：标题 + 可横滑的海报片架。
-/// 继续观看行的片名下面写播到哪一集和剩余时间，其余行不写副标题。
+/// 继续观看行渲染与首页一致的 16:9 横版剧照卡（带进度条与剩余分钟），其余行渲染海报卡。
 class HubShelfView extends StatelessWidget {
   const HubShelfView({
     super.key,
@@ -35,12 +36,19 @@ class HubShelfView extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final scaler = MediaQuery.textScalerOf(context);
-    final media = _covers();
-    final text =
-        scaler.scale(20) +
-        (media.any((m) => _note(m.$2) != null) ? scaler.scale(18) : 0);
+    final isContinue = hub.recent.isNotEmpty || hub.kind == 'continue';
+    final plays = isContinue ? _plays() : const <RecentPlay>[];
+    if (isContinue && plays.isEmpty) return const SizedBox.shrink();
+
+    final wide = MediaQuery.sizeOf(context).width >= wideLayoutBreakpoint;
+    final stillWidth = wide ? 280.0 : 220.0;
+    final textLines = isContinue
+        ? ContinueWatchingCard.textLines
+        : PosterCard.textLines(subtitle: false);
+    final text = textLines.map(scaler.scale).fold(0.0, (sum, h) => sum + h);
     // 上方留出聚焦放大的空间，下方留出阴影
-    final height = posterWidth * 3 / 2 + 8 + text.ceilToDouble() + 18;
+    final artHeight = isContinue ? stillWidth * 9 / 16 : posterWidth * 3 / 2;
+    final height = artHeight + 8 + text.ceilToDouble() + 18;
     return Padding(
       padding: EdgeInsets.fromLTRB(gutter, CinemaSpacing.section, gutter, 0),
       child: Column(
@@ -88,18 +96,29 @@ class HubShelfView extends StatelessWidget {
                 controller: controller,
                 scrollDirection: Axis.horizontal,
                 clipBehavior: Clip.none,
-                itemCount: media.length,
+                itemCount: isContinue ? plays.length : hub.items.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
                 itemBuilder: (context, index) {
-                  final (item, play) = media[index];
+                  final firstFocus =
+                      autofocus && index == 0 && isTelevision(context);
+                  if (isContinue) {
+                    final play = plays[index];
+                    return SizedBox(
+                      width: stillWidth,
+                      child: ContinueWatchingCard(
+                        autofocus: firstFocus,
+                        recent: play,
+                        heroTag: '$heroPrefix:${play.item.id}',
+                      ),
+                    );
+                  }
+                  final item = hub.items[index];
                   return SizedBox(
                     width: posterWidth,
                     child: PosterCard(
-                      autofocus:
-                          autofocus && index == 0 && isTelevision(context),
+                      autofocus: firstFocus,
                       media: item,
                       heroTag: '$heroPrefix:${item.id}',
-                      subtitle: _note(play),
                     ),
                   );
                 },
@@ -111,25 +130,15 @@ class HubShelfView extends StatelessWidget {
     );
   }
 
-  /// 继续观看行按 [HubRow.recent] 的顺序；其余行直接用 items。
-  List<(MediaCard, RecentPlay?)> _covers() {
+  /// 继续观看行按 [HubRow.recent] 的顺序；没有 recent 时兜底从 items 构造。
+  List<RecentPlay> _plays() {
     if (hub.recent.isEmpty) {
-      return [for (final item in hub.items) (item, null)];
+      return [for (final item in hub.items) RecentPlay(item: item)];
     }
+    if (hub.items.isEmpty) return hub.recent;
     return [
       for (final play in hub.recent)
-        if (hub.items.any((item) => item.id == play.item.id)) (play.item, play),
+        if (hub.items.any((item) => item.id == play.item.id)) play,
     ];
-  }
-
-  String? _note(RecentPlay? play) {
-    if (play == null) return null;
-    final episode = play.episode;
-    final parts = [
-      if (episode != null) formatEpisode(episode.seasonNumber, episode.number),
-      if (play.progress case final progress?)
-        '剩 ${progress.remainingMinutes} 分钟',
-    ];
-    return parts.isEmpty ? null : parts.join(' · ');
   }
 }

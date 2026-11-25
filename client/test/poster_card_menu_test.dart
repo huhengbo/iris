@@ -12,6 +12,7 @@ import 'package:iris/features/auth/auth_controller.dart';
 import 'package:iris/features/detail/detail_page.dart';
 import 'package:iris/features/library/art_image.dart';
 import 'package:iris/features/library/browse_api.dart';
+import 'package:iris/features/library/continue_watching_card.dart';
 import 'package:iris/features/library/poster_card.dart';
 
 import 'support/fake_api.dart';
@@ -383,4 +384,144 @@ void main() {
     );
     expect(tester.getRect(find.byKey(play)), playRectBefore);
   });
+
+  testWidgets(
+    'unwatched series shows count badge unless watched or selecting',
+    (tester) async {
+      Widget wrap(MediaCard media, {VoidCallback? onSelect}) => ProviderScope(
+        overrides: [authControllerProvider.overrideWith(() => _User('user'))],
+        child: MaterialApp(
+          theme: buildTheme(),
+          home: Scaffold(
+            body: SizedBox(
+              width: 160,
+              height: 292,
+              child: PosterCard(
+                media: media,
+                heroTag: 'b:${media.id}',
+                onSelect: onSelect,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      const unwatchedSeries = MediaCard(
+        id: 10,
+        libraryId: 1,
+        kind: MediaKind.series,
+        title: '三体',
+        unwatchedCount: 7,
+      );
+      await tester.pumpWidget(wrap(unwatchedSeries));
+      await tester.pumpAndSettle();
+      expect(find.byType(UnwatchedCountBadge), findsOneWidget);
+      expect(find.text('7'), findsOneWidget);
+      expect(find.byType(WatchedBadge), findsNothing);
+
+      const watchedSeries = MediaCard(
+        id: 11,
+        libraryId: 1,
+        kind: MediaKind.series,
+        title: '三体',
+        watched: true,
+        unwatchedCount: 0,
+      );
+      await tester.pumpWidget(wrap(watchedSeries));
+      await tester.pumpAndSettle();
+      expect(find.byType(UnwatchedCountBadge), findsNothing);
+      expect(find.byType(WatchedBadge), findsOneWidget);
+
+      await tester.pumpWidget(wrap(unwatchedSeries, onSelect: () {}));
+      await tester.pumpAndSettle();
+      expect(find.byType(UnwatchedCountBadge), findsNothing);
+    },
+  );
+
+  testWidgets('desktop right-click opens the card actions menu', (
+    tester,
+  ) async {
+    await _pumpCard(tester, role: 'user');
+    await tester.tap(find.byType(PosterCard), buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('收藏'), findsOneWidget);
+    expect(find.text('移出稍后观看'), findsOneWidget);
+    expect(find.text('从继续观看移除'), findsNothing);
+  });
+
+  testWidgets(
+    'ContinueWatchingCard shows hover actions, removes resume, and includes removeResume in menu',
+    (tester) async {
+      final api = FakeAdminApi()
+        ..on('GET /api/items/1', _detail())
+        ..on('DELETE /api/items/1/resume', null, status: 204);
+      final dio = Dio(BaseOptions(baseUrl: 'http://test'))
+        ..httpClientAdapter = api;
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => const Scaffold(
+              body: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: 280,
+                  height: 220,
+                  child: ContinueWatchingCard(
+                    recent: RecentPlay(
+                      item: MediaCard(
+                        id: 1,
+                        libraryId: 1,
+                        kind: MediaKind.movie,
+                        title: '流浪地球',
+                        year: 2019,
+                      ),
+                      progress: PlayProgress(
+                        position: Duration(minutes: 30),
+                        duration: Duration(minutes: 120),
+                      ),
+                    ),
+                    heroTag: 'cw:1',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(dio),
+            apiBaseUrlProvider.overrideWithValue('http://test'),
+            authControllerProvider.overrideWith(() => _User('user')),
+          ],
+          child: MaterialApp.router(theme: buildTheme(), routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+      await mouse.addPointer(
+        location: tester.getCenter(find.byType(ContinueWatchingCard)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('continue-play')), findsOneWidget);
+      expect(find.byKey(const ValueKey('continue-watched')), findsOneWidget);
+      expect(find.byKey(const ValueKey('continue-remove')), findsOneWidget);
+      expect(find.byKey(const ValueKey('continue-menu')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('continue-menu')));
+      await tester.pumpAndSettle();
+      expect(find.text('从继续观看移除'), findsOneWidget);
+      await tester.tap(find.text('从继续观看移除'));
+      await tester.pumpAndSettle();
+      expect(api.requests, contains('DELETE /api/items/1/resume'));
+    },
+  );
 }

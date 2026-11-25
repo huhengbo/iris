@@ -112,6 +112,14 @@ class PlaybackStates:
         ).fetchall()
         return [row["id"] for row in rows]
 
+    def remove_item_resume(self, item_id: int) -> None:
+        """从继续观看与最近播放中移除：清续播位置与最近播放时间，保留已看标记和播放事件历史。"""
+        self._clear_resume(
+            self._playables("m.id = ?", (item_id,)),
+            "条目不存在",
+            clear_last_played=True,
+        )
+
     def hide_item(self, item_id: int) -> None:
         self._clear_resume(self._playables("m.id = ?", (item_id,)), "条目不存在")
 
@@ -124,13 +132,16 @@ class PlaybackStates:
     def hide_episode(self, episode_id: int) -> None:
         self._clear_resume(self._playables("p.episode_id = ?", (episode_id,)), "这一集不存在")
 
-    def _clear_resume(self, playable_ids: list[int], missing: str) -> None:
-        """从继续观看里移除：只清续播位置，已看状态和历史保持不变。"""
+    def _clear_resume(
+        self, playable_ids: list[int], missing: str, *, clear_last_played: bool = False
+    ) -> None:
+        """从继续观看里移除：清续播位置（可选同步清最近播放时间），已看状态和历史保持不变。"""
         if not playable_ids:
             raise NotFound(missing)
         marks = ", ".join("?" for _ in playable_ids)
+        extra = ", last_played_at = NULL" if clear_last_played else ""
         self._db.execute(
-            f"UPDATE playback_state SET position = NULL, updated_at = ? "
+            f"UPDATE playback_state SET position = NULL{extra}, updated_at = ? "
             f"WHERE user_id = ? AND playable_id IN ({marks})",
             (to_iso(self._clock.now()), self._user.id, *playable_ids),
         )

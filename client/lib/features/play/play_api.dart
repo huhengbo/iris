@@ -358,6 +358,10 @@ Future<void> setWatched(
   }
 }
 
+/// 从首页和资料库的「继续观看」移除，保留已看标记与播放历史。
+Future<void> removeFromContinueWatching(Dio dio, int itemId) =>
+    dio.delete<void>('/api/items/$itemId/resume');
+
 // ---- 平台相关，测试时替换 ----
 
 /// Web 上 defaultTargetPlatform 反映的是浏览器所在的系统。
@@ -393,12 +397,21 @@ final videoIntentProvider = Provider<VideoIntentLauncher>(
       ).launchChooser('选择播放器'),
 );
 
-/// 本机记住的默认播放器（按平台分开），以及内置播放器的画面是否填满屏幕。
+/// 本机记住的默认播放器（按平台分开），以及内置播放器的画面是否填满屏幕、
+/// 自动连播、字幕外观与播放信息开关。
 abstract interface class PlayerPrefs {
   Future<ExternalPlayer?> read(PlayPlatform platform);
   Future<void> write(PlayPlatform platform, ExternalPlayer? player);
   Future<bool> readFill();
   Future<void> writeFill(bool fill);
+  Future<bool> readAutoNext();
+  Future<void> writeAutoNext(bool autoNext);
+  Future<double> readSubtitleScale();
+  Future<void> writeSubtitleScale(double scale);
+  Future<double> readSubtitleBottomPadding();
+  Future<void> writeSubtitleBottomPadding(double padding);
+  Future<bool> readStatsEnabled();
+  Future<void> writeStatsEnabled(bool enabled);
 }
 
 class SharedPreferencesPlayerPrefs implements PlayerPrefs {
@@ -420,23 +433,88 @@ class SharedPreferencesPlayerPrefs implements PlayerPrefs {
       : _prefs.setString(_key(platform), player.name);
 
   static const _fillKey = 'play.builtin.fill';
+  static const _autoNextKey = 'play.builtin.autoNext';
+  static const _subtitleScaleKey = 'play.builtin.subtitleScale';
+  static const _subtitleBottomPaddingKey = 'play.builtin.subtitleBottomPadding';
+  static const _statsEnabledKey = 'play.builtin.stats';
 
   @override
   Future<bool> readFill() async => await _prefs.getBool(_fillKey) ?? false;
 
   @override
   Future<void> writeFill(bool fill) => _prefs.setBool(_fillKey, fill);
+
+  @override
+  Future<bool> readAutoNext() async =>
+      await _prefs.getBool(_autoNextKey) ?? true;
+
+  @override
+  Future<void> writeAutoNext(bool autoNext) =>
+      _prefs.setBool(_autoNextKey, autoNext);
+
+  @override
+  Future<double> readSubtitleScale() async =>
+      await _prefs.getDouble(_subtitleScaleKey) ?? 1.0;
+
+  @override
+  Future<void> writeSubtitleScale(double scale) =>
+      _prefs.setDouble(_subtitleScaleKey, scale);
+
+  @override
+  Future<double> readSubtitleBottomPadding() async =>
+      await _prefs.getDouble(_subtitleBottomPaddingKey) ?? 28.0;
+
+  @override
+  Future<void> writeSubtitleBottomPadding(double padding) =>
+      _prefs.setDouble(_subtitleBottomPaddingKey, padding);
+
+  @override
+  Future<bool> readStatsEnabled() async =>
+      await _prefs.getBool(_statsEnabledKey) ?? false;
+
+  @override
+  Future<void> writeStatsEnabled(bool enabled) =>
+      _prefs.setBool(_statsEnabledKey, enabled);
 }
 
 class MemoryPlayerPrefs implements PlayerPrefs {
   final Map<PlayPlatform, ExternalPlayer> _players = {};
   bool _fill = false;
+  bool _autoNext = true;
+  double _subtitleScale = 1.0;
+  double _subtitleBottomPadding = 28.0;
+  bool _statsEnabled = false;
 
   @override
   Future<bool> readFill() async => _fill;
 
   @override
   Future<void> writeFill(bool fill) async => _fill = fill;
+
+  @override
+  Future<bool> readAutoNext() async => _autoNext;
+
+  @override
+  Future<void> writeAutoNext(bool autoNext) async => _autoNext = autoNext;
+
+  @override
+  Future<double> readSubtitleScale() async => _subtitleScale;
+
+  @override
+  Future<void> writeSubtitleScale(double scale) async => _subtitleScale = scale;
+
+  @override
+  Future<double> readSubtitleBottomPadding() async => _subtitleBottomPadding;
+
+  @override
+  Future<void> writeSubtitleBottomPadding(double padding) async =>
+      _subtitleBottomPadding = padding;
+
+  @override
+  Future<bool> readStatsEnabled() async => _statsEnabled;
+
+  @override
+  Future<void> writeStatsEnabled(bool enabled) async => _statsEnabled = enabled;
 
   @override
   Future<ExternalPlayer?> read(PlayPlatform platform) async =>

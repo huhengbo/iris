@@ -48,7 +48,7 @@ CARD_FROM = """
 CARD_SELECT = CARD_SELECT_FIELDS + CARD_FROM
 
 
-def row_card(row: sqlite3.Row, watched: bool) -> ItemCard:
+def row_card(row: sqlite3.Row, watched: bool, unwatched_count: int | None = None) -> ItemCard:
     return ItemCard(
         id=row["id"],
         library_id=row["library_id"],
@@ -62,6 +62,7 @@ def row_card(row: sqlite3.Row, watched: bool) -> ItemCard:
         poster=image_sizes(row["poster_hash"], "poster"),
         backdrop=image_sizes(row["backdrop_hash"], "backdrop"),
         watched=watched,
+        unwatched_count=unwatched_count,
     )
 
 

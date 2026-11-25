@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,7 @@ import 'package:iris/app/shell.dart';
 import 'package:iris/app/theme.dart';
 import 'package:iris/app/wide_sidebar.dart';
 import 'package:iris/features/auth/account_switcher.dart';
+import 'package:iris/features/search/search_page.dart';
 
 import 'support/fake_api.dart';
 import 'support/nav_env.dart';
@@ -295,4 +298,144 @@ void main() {
       expect(find.text(merged), findsNothing, reason: merged);
     }
   });
+
+  testWidgets('right-clicking a library row opens the admin menu', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+
+    await tester.tap(find.text('电影'), buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+
+    for (final item in ['同步此资料库', '刷新元数据', '编辑资料库', '管理推荐', '删除']) {
+      expect(find.text(item), findsOneWidget, reason: item);
+    }
+  });
+
+  testWidgets('global shortcuts / and Ctrl+K focus the top bar search box', (
+    tester,
+  ) async {
+    await pumpShell(tester);
+    final fieldFinder = find.byType(TextField);
+    expect(tester.widget<TextField>(fieldFinder).focusNode!.hasFocus, isFalse);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.slash);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(fieldFinder).focusNode!.hasFocus, isTrue);
+
+    // 焦点在输入框内时再按 / 不会拦截输入，Unfocus 后再用 Ctrl+K 聚焦
+    tester.widget<TextField>(fieldFinder).focusNode!.unfocus();
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(fieldFinder).focusNode!.hasFocus, isFalse);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(fieldFinder).focusNode!.hasFocus, isTrue);
+  });
+
+  testWidgets(
+    'wide search hides duplicate SearchPage field and syncs TopBar two-way',
+    (tester) async {
+      final env = navEnv();
+      env.api.on('GET /api/search?q=流浪&offset=0&limit=60', {
+        'items': <Object>[],
+        'total': 0,
+        'people': <Object>[],
+        'episodes': <Object>[],
+      });
+      env.api.on('GET /api/search?q=三体&offset=0&limit=60', {
+        'items': <Object>[],
+        'total': 0,
+        'people': <Object>[],
+        'episodes': <Object>[],
+      });
+      router = GoRouter(
+        routes: [
+          StatefulShellRoute.indexedStack(
+            builder: (_, _, shell) => AppShell(navigationShell: shell),
+            branches: [
+              StatefulShellBranch(
+                routes: [
+                  GoRoute(
+                    path: '/',
+                    builder: (_, _) => const Scaffold(body: Text('首页')),
+                  ),
+                ],
+              ),
+              StatefulShellBranch(
+                routes: [
+                  GoRoute(
+                    path: '/libraries',
+                    builder: (_, _) => const Scaffold(body: Text('资料库')),
+                  ),
+                ],
+              ),
+              StatefulShellBranch(
+                routes: [
+                  GoRoute(
+                    path: '/search',
+                    builder: (_, state) =>
+                        SearchPage(query: state.uri.queryParameters['q'] ?? ''),
+                  ),
+                ],
+              ),
+              StatefulShellBranch(
+                routes: [
+                  GoRoute(
+                    path: '/me',
+                    builder: (_, _) => const Scaffold(body: Text('我的')),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ...env.overrides.cast(),
+            searchHistoryStorageProvider.overrideWithValue(
+              MemorySearchHistoryStorage(),
+            ),
+          ],
+          child: MaterialApp.router(theme: buildTheme(), routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      router.go('/search?q=流浪');
+      await tester.pumpAndSettle();
+
+      // 宽屏进入 /search 只保留 TopBar 的一个搜索框，且文本同步为「流浪」
+      expect(find.byType(TextField), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '流浪',
+      );
+      expect(find.byTooltip('清除'), findsOneWidget);
+
+      // 在 TopBar 输入防抖更新路由
+      await tester.enterText(find.byType(TextField), '三体');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(router.state.uri.queryParameters['q'], '三体');
+
+      // 点击清除按钮清空搜索框并移除 q
+      await tester.tap(find.byTooltip('清除'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '',
+      );
+      expect(router.state.uri.queryParameters['q'], isNull);
+    },
+  );
 }

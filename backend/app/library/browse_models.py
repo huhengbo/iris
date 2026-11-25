@@ -85,6 +85,8 @@ class ItemCard:
     backdrop: list[ImageSize]
     # 电影已看；剧集的全部集都已看
     watched: bool
+    # 剧集尚未标记已看的可用单集数；电影为 None
+    unwatched_count: int | None = None
 
 
 @dataclass(frozen=True)

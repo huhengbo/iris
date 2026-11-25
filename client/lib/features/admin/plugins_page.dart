@@ -464,7 +464,7 @@ class _PluginCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  'v${plugin.version}',
+                  formatPluginVersion(plugin.version),
                   style: text.bodySmall,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -533,6 +533,15 @@ class _PluginCard extends StatelessWidget {
   }
 }
 
+/// 统一规范版本号展示，去掉多余前缀并补上单个 `v`。
+String formatPluginVersion(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return '';
+  final normalized = trimmed.replaceFirst(RegExp(r'^[vV]+'), '');
+  if (normalized.isEmpty) return '';
+  return 'v$normalized';
+}
+
 class _StateBadge extends StatelessWidget {
   const _StateBadge(this.state);
 
@@ -540,19 +549,49 @@ class _StateBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final failed = state == PluginState.failed;
+    final (background, foreground, showDot) = switch (state) {
+      PluginState.running => (
+        CinemaColors.success.withValues(alpha: 0.14),
+        CinemaColors.success,
+        true,
+      ),
+      PluginState.failed => (
+        CinemaColors.error.withValues(alpha: 0.12),
+        CinemaColors.error,
+        false,
+      ),
+      PluginState.stopped || PluginState.notInstalled => (
+        CinemaColors.surface3,
+        CinemaColors.text2,
+        false,
+      ),
+    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: failed
-            ? CinemaColors.error.withValues(alpha: 0.12)
-            : CinemaColors.surface3,
+        color: background,
         borderRadius: BorderRadius.circular(CinemaRadius.pill),
       ),
-      child: Text(
-        state.label,
-        style: Theme.of(context).textTheme.labelSmall
-            ?.copyWith(color: failed ? CinemaColors.error : CinemaColors.text2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showDot) ...[
+            Container(
+              width: 6,
+              height: 6,
+              decoration: const BoxDecoration(
+                color: CinemaColors.success,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            state.label,
+            style: Theme.of(context).textTheme.labelSmall
+                ?.copyWith(color: foreground),
+          ),
+        ],
       ),
     );
   }

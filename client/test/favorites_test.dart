@@ -50,6 +50,7 @@ Map<String, Object?> detail(
   'overview': '${card['title']}的简介',
   'content_rating': null,
   'watchlisted': false,
+  'logo': <Object>[],
   'directors': <Object>[],
   'writers': <Object>[],
   'cast': <Object>[],

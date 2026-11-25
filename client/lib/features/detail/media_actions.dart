@@ -110,3 +110,23 @@ Future<void> setWatchlisted(
     ..invalidate(libraryItemsProvider)
     ..invalidate(mediaDetailProvider(itemId));
 }
+
+/// 从继续观看 / 最近播放中移除：清除该条目的续播位置与最近播放时间，不改变已看状态。
+Future<bool> hideFromContinueWatching(
+  BuildContext context,
+  WidgetRef ref,
+  MediaCard card,
+) async {
+  try {
+    await removeFromContinueWatching(ref.read(apiClientProvider), card.id);
+  } catch (e) {
+    if (context.mounted) showApiErrorSnack(context, e);
+    return false;
+  }
+  ref
+    ..invalidate(homeFeedProvider)
+    ..invalidate(libraryHubsProvider(card.libraryId))
+    ..invalidate(mediaDetailProvider(card.id));
+  if (context.mounted) showSnack(context, '已从继续观看移除');
+  return true;
+}

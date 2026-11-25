@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,42 +8,134 @@ import '../core/servers.dart';
 import '../features/ai/ai_entry_button.dart';
 import '../features/auth/account_switcher.dart';
 import '../features/auth/auth_controller.dart';
+import '../features/search/search_page.dart';
 import 'account_menu.dart';
 import 'activity_menu.dart';
 import 'theme.dart';
 
 /// 宽屏顶栏：左边是搜索框，右边依次是活动（仅管理员）、设置扳手和头像菜单。
 class TopBar extends ConsumerStatefulWidget {
-  const TopBar({super.key});
+  const TopBar({super.key, this.currentUri});
+
+  final Uri? currentUri;
 
   @override
-  ConsumerState<TopBar> createState() => _TopBarState();
+  ConsumerState<TopBar> createState() => TopBarState();
 }
 
-class _TopBarState extends ConsumerState<TopBar> {
+class TopBarState extends ConsumerState<TopBar> {
   static const _height = 64.0;
+  static const _debounce = Duration(milliseconds: 300);
 
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
+  Timer? _timer;
+  Uri? _lastUri;
+
+  /// 全局快捷键（`/` 或 `Cmd/Ctrl + K`）聚焦顶栏搜索框。
+  void focusSearch() {
+    _searchFocus.requestFocus();
+    if (_search.text.isNotEmpty) {
+      _search.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _search.text.length,
+      );
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncFromRoute();
+  }
+
+  @override
+  void didUpdateWidget(covariant TopBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncFromRoute();
+  }
 
   @override
   void dispose() {
+    _timer?.cancel();
     _search.dispose();
     _searchFocus.dispose();
     super.dispose();
   }
 
-  /// 搜索结果页从地址里的 q 取词（同手机「搜索」栏）。同 Plex Web，在顶栏里直接打字，
-  /// 回车后进搜索页。
-  void _openSearch() {
-    final query = _search.text.trim();
-    _searchFocus.unfocus();
-    context.go(
-      Uri(
-        path: '/search',
-        queryParameters: query.isEmpty ? null : {'q': query},
-      ).toString(),
+  Uri? get _currentUri =>
+      widget.currentUri ?? GoRouter.maybeOf(context)?.state.uri;
+
+  bool get _inSearch => _currentUri?.path == '/search';
+
+  void _syncFromRoute() {
+    final uri = _currentUri;
+    if (uri == null || uri == _lastUri) return;
+    _lastUri = uri;
+    if (uri.path != '/search') return;
+    final routeQ = uri.queryParameters['q'] ?? '';
+    if (routeQ.trim() != _search.text.trim()) {
+      _timer?.cancel();
+      _search.value = TextEditingValue(
+        text: routeQ,
+        selection: TextSelection.collapsed(offset: routeQ.length),
+      );
+    }
+  }
+
+  void _onChanged(String text) {
+    _timer?.cancel();
+    if (!_inSearch) return;
+    _timer = Timer(_debounce, () => _applyInSearch(text));
+  }
+
+  void _applyInSearch(String text) {
+    _timer?.cancel();
+    if (!mounted) return;
+    final q = text.trim();
+    final routeQ = (_currentUri?.queryParameters['q'] ?? '').trim();
+    if (q == routeQ) return;
+    if (q.isNotEmpty) {
+      ref.read(searchHistoryProvider.notifier).add(q);
+    }
+    Router.neglect(
+      context,
+      () => context.go(
+        Uri(
+          path: '/search',
+          queryParameters: q.isEmpty ? null : {'q': q},
+        ).toString(),
+      ),
     );
+  }
+
+  void _clear() {
+    _timer?.cancel();
+    _search.clear();
+    if (_inSearch) {
+      _applyInSearch('');
+    }
+    _searchFocus.requestFocus();
+  }
+
+  /// 搜索结果页从地址里的 q 取词（同手机「搜索」栏）。在搜索页外回车跳去搜索页，
+  /// 在搜索页内回车立即应用搜索词。
+  void _openSearch() {
+    _timer?.cancel();
+    final query = _search.text.trim();
+    if (query.isNotEmpty) {
+      ref.read(searchHistoryProvider.notifier).add(query);
+    }
+    _searchFocus.unfocus();
+    final target = Uri(
+      path: '/search',
+      queryParameters: query.isEmpty ? null : {'q': query},
+    ).toString();
+    if (_inSearch) {
+      Router.neglect(context, () => context.go(target));
+    } else {
+      context.go(target);
+    }
   }
 
   @override
@@ -62,13 +156,26 @@ class _TopBarState extends ConsumerState<TopBar> {
                   controller: _search,
                   focusNode: _searchFocus,
                   textInputAction: TextInputAction.search,
+                  maxLength: 100,
+                  onChanged: _onChanged,
                   onSubmitted: (_) => _openSearch(),
                   decoration: InputDecoration(
                     hintText: '搜索影片、剧集或人物',
+                    counterText: '',
                     prefixIcon: const Icon(Icons.search, size: 20),
                     prefixIconConstraints: const BoxConstraints(
                       minWidth: 40,
                       minHeight: 40,
+                    ),
+                    suffixIcon: ListenableBuilder(
+                      listenable: _search,
+                      builder: (_, _) => _search.text.isEmpty
+                          ? const SizedBox.shrink()
+                          : IconButton(
+                              tooltip: '清除',
+                              onPressed: _clear,
+                              icon: const Icon(Icons.close, size: 18),
+                            ),
                     ),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(

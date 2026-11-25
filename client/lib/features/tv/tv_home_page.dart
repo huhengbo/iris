@@ -11,6 +11,7 @@ import '../../core/api/paging.dart' show Artwork;
 import '../../core/format.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/skeleton.dart';
 import '../library/art_image.dart';
 import '../library/browse_api.dart';
 import 'tv_widgets.dart';
@@ -82,7 +83,7 @@ class _TvHomePageState extends ConsumerState<TvHomePage> {
           message: ApiError.from(error).message,
           onRetry: () => ref.invalidate(homeFeedProvider),
         ),
-        _ => const Center(child: CircularProgressIndicator()),
+        _ => const _TvHomeSkeleton(),
       };
     }
     final shelves = _shelves(cached);
@@ -298,6 +299,7 @@ class _ShelfData {
               note: e.note,
               heroTag: 'tv:$shelfIndex:${e.media.id}',
               progress: e.progress,
+              continueWatching: true,
               autofocus: autofocusFirst && i == 0,
               onFocus: (m) => onFocus(m, e.progress == null ? null : e.note),
             )
@@ -510,6 +512,160 @@ class _SpotText extends ConsumerWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+/// TV 首页首次加载骨架：上方预留聚焦展示区，下方展示两排横向卡片骨架。
+class _TvHomeSkeleton extends StatelessWidget {
+  const _TvHomeSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final safe = MediaQuery.paddingOf(context);
+
+    Widget bar(double width, double height) => SizedBox(
+      width: width,
+      height: height,
+      child: Skeleton(borderRadius: BorderRadius.circular(CinemaRadius.tiny)),
+    );
+
+    Widget shelfRow({
+      required double titleWidth,
+      required double cardWidth,
+      required double aspectRatio,
+      required double textHeight,
+      required int itemCount,
+      required bool twoLines,
+    }) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 14),
+            child: bar(titleWidth, 22),
+          ),
+          SizedBox(
+            height:
+                cardWidth / aspectRatio +
+                textHeight +
+                TvMetrics.railPadding.vertical,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: TvMetrics.railPadding,
+              itemCount: itemCount,
+              separatorBuilder: (_, _) => const SizedBox(width: TvMetrics.gap),
+              itemBuilder: (_, _) => SizedBox(
+                width: cardWidth,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AspectRatio(
+                      aspectRatio: aspectRatio,
+                      child: Skeleton(
+                        borderRadius: BorderRadius.circular(CinemaRadius.card),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    FractionallySizedBox(
+                      widthFactor: 0.68,
+                      alignment: Alignment.centerLeft,
+                      child: bar(double.infinity, 14),
+                    ),
+                    if (twoLines) ...[
+                      const SizedBox(height: 6),
+                      FractionallySizedBox(
+                        widthFactor: 0.45,
+                        alignment: Alignment.centerLeft,
+                        child: bar(double.infinity, 12),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Semantics(
+      label: '正在加载',
+      child: ColoredBox(
+        color: CinemaColors.bg,
+        child: Column(
+          children: [
+            SizedBox(
+              height: _SpotlightArea.height + safe.top,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  safe.left + 40,
+                  safe.top,
+                  safe.right + 48,
+                  8,
+                ),
+                child: Align(
+                  alignment: Alignment.bottomLeft,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 780),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        bar(320, 34),
+                        const SizedBox(height: 12),
+                        bar(220, 18),
+                        const SizedBox(height: 14),
+                        bar(560, 16),
+                        const SizedBox(height: 8),
+                        bar(420, 16),
+                        const SizedBox(height: 8),
+                        bar(280, 16),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                physics: const NeverScrollableScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(
+                  safe.left + 26,
+                  0,
+                  safe.right,
+                  safe.bottom + 24,
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: shelfRow(
+                      titleWidth: 112,
+                      cardWidth: TvMetrics.stillWidth,
+                      aspectRatio: 16 / 9,
+                      textHeight: TvStill.textHeight,
+                      itemCount: 5,
+                      twoLines: true,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: shelfRow(
+                      titleWidth: 148,
+                      cardWidth: TvMetrics.posterWidth,
+                      aspectRatio: 2 / 3,
+                      textHeight: TvPoster.textHeight(),
+                      itemCount: 7,
+                      twoLines: false,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

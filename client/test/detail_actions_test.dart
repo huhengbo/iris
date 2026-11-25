@@ -641,7 +641,7 @@ void main() {
       expect(find.text('制作公司'), findsOneWidget);
       expect(find.text('中国电影集团、B 公司'), findsOneWidget);
       expect(find.text('国家 / 地区'), findsOneWidget);
-      expect(find.text('2023-01-22'), findsOneWidget);
+      expect(find.text('2023年1月22日'), findsOneWidget);
     });
 
     testWidgets('a narrower screen leaves the aside out', (tester) async {

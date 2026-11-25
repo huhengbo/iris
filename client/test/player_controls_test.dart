@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:iris/app/theme.dart';
 import 'package:iris/core/widgets/picker_sheet.dart';
+import 'package:iris/features/play/play_api.dart';
 import 'package:iris/features/play/player_page.dart';
 import 'package:media_kit/media_kit.dart';
 
@@ -512,5 +513,316 @@ void main() {
     await tester.tap(find.byTooltip('解锁'));
     await tester.pumpAndSettle();
     expect(find.byTooltip('暂停'), findsOneWidget);
+  });
+
+  test('MemoryPlayerPrefs 读写自动连播、字幕外观与播放信息偏好', () async {
+    final prefs = MemoryPlayerPrefs();
+    expect(await prefs.readAutoNext(), isTrue);
+    expect(await prefs.readSubtitleScale(), 1.0);
+    expect(await prefs.readSubtitleBottomPadding(), 28.0);
+    expect(await prefs.readStatsEnabled(), isFalse);
+
+    await prefs.writeAutoNext(false);
+    await prefs.writeSubtitleScale(1.25);
+    await prefs.writeSubtitleBottomPadding(52.0);
+    await prefs.writeStatsEnabled(true);
+
+    expect(await prefs.readAutoNext(), isFalse);
+    expect(await prefs.readSubtitleScale(), 1.25);
+    expect(await prefs.readSubtitleBottomPadding(), 52.0);
+    expect(await prefs.readStatsEnabled(), isTrue);
+  });
+
+  test('字幕样式配置按缩放倍数与底部边距计算', () {
+    final normal = buildSubtitleViewConfiguration(800);
+    expect(normal.padding, const EdgeInsets.fromLTRB(48, 0, 48, 28));
+    expect(normal.textScaler?.scale(32), closeTo(44.0, 0.01));
+
+    final largeHigh = buildSubtitleViewConfiguration(
+      800,
+      scale: 1.25,
+      bottomPadding: 52.0,
+    );
+    expect(largeHigh.padding, const EdgeInsets.fromLTRB(48, 0, 48, 52));
+    expect(largeHigh.textScaler?.scale(32), closeTo(55.0, 0.01));
+  });
+
+  test('章节列表解析、跳过片头条件与目标计算', () {
+    final chapters = parseChapterList('''
+      [
+        {"title": "正片", "time": 92.5},
+        {"title": "片头", "time": 0},
+        {"title": "", "time": 1200},
+        {"title": "bad", "time": -5}
+      ]
+    ''');
+    expect(chapters.length, 3);
+    expect(chapters[0].title, '片头');
+    expect(chapters[0].start, Duration.zero);
+    expect(chapters[1].title, '正片');
+    expect(chapters[1].start, const Duration(milliseconds: 92500));
+    expect(chapters[2].title, '第 3 章');
+    expect(chapters[2].start, const Duration(seconds: 1200));
+    expect(parseChapterList('invalid json'), isEmpty);
+
+    expect(
+      nextChapterAfter(chapters, const Duration(seconds: 20))?.title,
+      '正片',
+    );
+    expect(
+      skipIntroTarget(
+        position: const Duration(seconds: 20),
+        duration: const Duration(minutes: 45),
+        chapters: chapters,
+      ),
+      const Duration(milliseconds: 92500),
+    );
+    expect(
+      skipIntroTarget(
+        position: const Duration(seconds: 20),
+        duration: const Duration(minutes: 45),
+        chapters: const [],
+      ),
+      const Duration(seconds: 105),
+    );
+    expect(
+      shouldShowSkipIntro(
+        visible: true,
+        locked: false,
+        episodic: true,
+        position: const Duration(seconds: 30),
+        duration: const Duration(minutes: 45),
+        chapters: const [],
+      ),
+      isTrue,
+    );
+    expect(
+      shouldShowSkipIntro(
+        visible: true,
+        locked: true,
+        episodic: true,
+        position: const Duration(seconds: 30),
+        duration: const Duration(minutes: 45),
+        chapters: const [],
+      ),
+      isFalse,
+    );
+    expect(
+      shouldShowSkipIntro(
+        visible: true,
+        locked: false,
+        episodic: false,
+        position: const Duration(minutes: 10),
+        duration: const Duration(minutes: 45),
+        chapters: chapters,
+      ),
+      isFalse,
+    );
+  });
+
+  test('顶栏时间格式化包含当前时间与预计结束时间', () {
+    final now = DateTime(2026, 11, 25, 21, 18);
+    expect(
+      formatTopBarTime(
+        now,
+        position: const Duration(minutes: 10),
+        duration: const Duration(minutes: 57),
+      ),
+      '21:18 · 预计 22:05 结束',
+    );
+    expect(
+      formatTopBarTime(now, position: Duration.zero, duration: Duration.zero),
+      '21:18',
+    );
+  });
+
+  testWidgets('顶栏展示当前系统时间与预计结束时间，控制条显示跳过片头并可点击', (tester) async {
+    var skipped = 0;
+    final playFocus = FocusNode(debugLabel: 'player.play');
+    final seekFocus = FocusNode(debugLabel: 'player.seek');
+    addTearDown(playFocus.dispose);
+    addTearDown(seekFocus.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(),
+        home: Scaffold(
+          body: PlayerControls(
+            tv: false,
+            visible: true,
+            title: '三体 · 第 1 季 第 2 集',
+            position: const Duration(minutes: 1),
+            duration: const Duration(minutes: 45),
+            playing: true,
+            castable: false,
+            rate: 1,
+            fill: false,
+            episodic: true,
+            chapters: const [
+              PlayerChapter(title: '片头', start: Duration.zero),
+              PlayerChapter(title: '正片', start: Duration(seconds: 90)),
+            ],
+            now: DateTime(2026, 11, 25, 21, 18),
+            playFocus: playFocus,
+            seekFocus: seekFocus,
+            onClose: () {},
+            onCast: () {},
+            onTogglePlay: () {},
+            onSeekBy: (_) {},
+            onScrubBy: (_) {},
+            onOpenSettings: () {},
+            onScrubStart: () {},
+            onScrub: (_) {},
+            onScrubEnd: () {},
+            onRate: () {},
+            onAudio: () {},
+            onSubtitles: () {},
+            onSkipIntro: () => skipped++,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('21:18 · 预计 22:02 结束'), findsOneWidget);
+    expect(find.text('跳过片头'), findsOneWidget);
+
+    await tester.tap(find.text('跳过片头'));
+    await tester.pump();
+    expect(skipped, 1);
+  });
+
+  testWidgets('设置面板支持字幕字号/位置/延迟、自动连播、播放信息开关与章节跳转', (tester) async {
+    double? scale;
+    double? padding;
+    final delays = <double>[];
+    bool? autoNext;
+    bool? showStats;
+    PlayerChapter? jumped;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showPlayerSettings(
+                context,
+                audios: const [],
+                audioId: 'auto',
+                subtitles: const [],
+                subtitleId: 'no',
+                rate: 1,
+                fill: false,
+                canSearchSubtitles: false,
+                chapters: const [
+                  PlayerChapter(title: '片头', start: Duration.zero),
+                  PlayerChapter(title: '正片', start: Duration(seconds: 90)),
+                ],
+                position: const Duration(seconds: 10),
+                onAudio: (_) {},
+                onSubtitle: (_) {},
+                onRate: (_) {},
+                onFill: (_) {},
+                onSearchSubtitles: () async {},
+                onSubtitleScale: (v) => scale = v,
+                onSubtitleBottomPadding: (v) => padding = v,
+                onSubtitleDelay: delays.add,
+                onAutoNext: (v) => autoNext = v,
+                onShowStats: (v) => showStats = v,
+                onJumpChapter: (c) => jumped = c,
+              ),
+              child: const Text('打开设置'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开设置'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '大'));
+    await tester.pumpAndSettle();
+    expect(scale, 1.25);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, '偏上'));
+    await tester.pumpAndSettle();
+    expect(padding, 52.0);
+
+    await tester.tap(find.text('+0.5s'));
+    await tester.pumpAndSettle();
+    expect(find.text('+0.5s'), findsNWidgets(2));
+    await tester.tap(find.text('-0.5s'));
+    await tester.pumpAndSettle();
+    expect(find.text('0.0s'), findsOneWidget);
+    await tester.tap(find.text('+0.5s'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('归零'));
+    await tester.pumpAndSettle();
+    expect(delays, [0.5, 0.0, 0.5, 0.0]);
+
+    await tester.ensureVisible(find.text('自动连播下一集'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('自动连播下一集'));
+    await tester.pumpAndSettle();
+    expect(autoNext, isFalse);
+
+    await tester.ensureVisible(find.text('播放信息'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('播放信息'));
+    await tester.pumpAndSettle();
+    expect(showStats, isTrue);
+
+    await tester.ensureVisible(find.text('下一章节 · 正片'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('下一章节 · 正片'));
+    await tester.pumpAndSettle();
+    expect(jumped?.title, '正片');
+  });
+
+  testWidgets('自动连播倒计时浮层与播放信息浮层正常渲染和响应', (tester) async {
+    var playNow = 0;
+    var cancelled = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(),
+        home: Scaffold(
+          body: Stack(
+            children: [
+              const PlayerStatsOverlay(
+                stats: PlayerStatsInfo(
+                  resolution: '3840×2160',
+                  videoCodec: 'HEVC · HDR10',
+                  audioCodec: 'EAC3 · 5.1',
+                  hwdec: 'mediacodec',
+                  rate: 1.25,
+                  bufferAhead: Duration(seconds: 18),
+                ),
+              ),
+              AutoNextOverlay(
+                seconds: 5,
+                nextTitle: '第 3 集 · 黑暗森林',
+                onPlayNow: () => playNow++,
+                onCancel: () => cancelled++,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('3840×2160'), findsOneWidget);
+    expect(find.text('HEVC · HDR10'), findsOneWidget);
+    expect(find.text('EAC3 · 5.1'), findsOneWidget);
+    expect(find.text('mediacodec'), findsOneWidget);
+    expect(find.text('1.25×'), findsOneWidget);
+    expect(find.text('18 秒'), findsOneWidget);
+
+    expect(find.text('5 秒后播放 第 3 集 · 黑暗森林'), findsOneWidget);
+    await tester.tap(find.text('立即播放'));
+    await tester.tap(find.text('取消'));
+    await tester.pump();
+    expect(playNow, 1);
+    expect(cancelled, 1);
   });
 }

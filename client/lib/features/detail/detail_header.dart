@@ -107,8 +107,9 @@ class _Poster extends StatelessWidget {
 }
 
 /// 压在剧照上的吸顶顶栏：初始只留 scrim 圆底返回钮，滚过头图后淡入底色、
-/// 底部分割线与片名。直接打开的地址没有上一页时返回回首页。
-class DetailTopBar extends StatefulWidget {
+/// 底部分割线与片名。宽屏非 TV 时右侧带「搜索」「首页」快捷图标按钮。
+/// 直接打开的地址没有上一页时返回回首页。
+class DetailTopBar extends ConsumerStatefulWidget {
   const DetailTopBar({
     super.key,
     required this.controller,
@@ -121,10 +122,10 @@ class DetailTopBar extends StatefulWidget {
   final String? title;
 
   @override
-  State<DetailTopBar> createState() => _DetailTopBarState();
+  ConsumerState<DetailTopBar> createState() => _DetailTopBarState();
 }
 
-class _DetailTopBarState extends State<DetailTopBar> {
+class _DetailTopBarState extends ConsumerState<DetailTopBar> {
   bool _scrolled = false;
 
   @override
@@ -166,6 +167,9 @@ class _DetailTopBarState extends State<DetailTopBar> {
     final title = widget.title;
     final showTitle = _scrolled && title != null && title.isNotEmpty;
     final duration = Motion.reduced(context) ? Duration.zero : Motion.short;
+    final showQuickNav =
+        !ref.watch(televisionProvider) &&
+        MediaQuery.sizeOf(context).width >= wideLayoutBreakpoint;
     return Positioned(
       left: 0,
       right: 0,
@@ -187,18 +191,12 @@ class _DetailTopBarState extends State<DetailTopBar> {
             padding: const EdgeInsets.all(8),
             child: Row(
               children: [
-                IconButton.filled(
+                _TopBarButton(
                   tooltip: '返回',
-                  style: IconButton.styleFrom(
-                    fixedSize: const Size.square(44),
-                    backgroundColor: _scrolled
-                        ? Colors.transparent
-                        : CinemaColors.scrim,
-                    foregroundColor: CinemaColors.text0,
-                  ),
+                  scrolled: _scrolled,
+                  icon: Icons.arrow_back,
                   onPressed: () =>
                       context.canPop() ? context.pop() : context.go('/'),
-                  icon: const Icon(Icons.arrow_back),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -222,11 +220,113 @@ class _DetailTopBarState extends State<DetailTopBar> {
                         : const SizedBox.shrink(key: ValueKey('empty')),
                   ),
                 ),
+                if (showQuickNav) ...[
+                  const SizedBox(width: 8),
+                  _TopBarButton(
+                    tooltip: '搜索',
+                    scrolled: _scrolled,
+                    icon: Icons.search_outlined,
+                    onPressed: () => context.go('/search'),
+                  ),
+                  const SizedBox(width: 8),
+                  _TopBarButton(
+                    tooltip: '首页',
+                    scrolled: _scrolled,
+                    icon: Icons.home_outlined,
+                    onPressed: () => context.go('/'),
+                  ),
+                ],
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _TopBarButton extends StatelessWidget {
+  const _TopBarButton({
+    required this.tooltip,
+    required this.scrolled,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final bool scrolled;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filled(
+      tooltip: tooltip,
+      style: IconButton.styleFrom(
+        fixedSize: const Size.square(44),
+        backgroundColor: scrolled ? Colors.transparent : CinemaColors.scrim,
+        foregroundColor: CinemaColors.text0,
+      ),
+      onPressed: onPressed,
+      icon: Icon(icon),
+    );
+  }
+}
+
+/// 详情页头部片名：有 ClearLogo 时优先左对齐展示透明 Logo，加载中或失败无闪烁回退文字大标题。
+class DetailTitle extends StatelessWidget {
+  const DetailTitle({super.key, required this.title, this.logo = Artwork.none});
+
+  final String title;
+  final Artwork logo;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTitle = Text(
+      title,
+      style: Theme.of(context).textTheme.headlineMedium!
+          .copyWith(color: CinemaColors.text0, fontWeight: FontWeight.w700),
+    );
+    if (logo.isEmpty) return textTitle;
+    final wide = MediaQuery.sizeOf(context).width >= wideLayoutBreakpoint;
+    final maxHeight = wide ? 100.0 : 80.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final pixelWidth = (width * MediaQuery.devicePixelRatioOf(context))
+            .round();
+        final url = logo.pick(pixelWidth.toDouble());
+        if (url == null) return textTitle;
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: Semantics(
+            label: title,
+            child: ExcludeSemantics(
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                alignment: Alignment.centerLeft,
+                gaplessPlayback: true,
+                frameBuilder: (context, child, frame, synchronous) {
+                  if (synchronous || frame != null) {
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: width,
+                        maxHeight: maxHeight,
+                      ),
+                      child: child,
+                    );
+                  }
+                  return textTitle;
+                },
+                errorBuilder: (_, _, _) => textTitle,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -393,7 +493,7 @@ class DetailActions extends StatelessWidget {
   }
 }
 
-/// 片名下的元数据：「·」分隔的一行文字，后面跟内容分级和评分角标。
+/// 片名下的元数据：「·」分隔的一行文字，后面跟内容分级、评分与技术规格角标。
 /// 详情给了 [ratings] 就每个来源一个角标，否则回退到单个 TMDB 评分。
 class DetailMeta extends StatelessWidget {
   const DetailMeta({
@@ -402,6 +502,7 @@ class DetailMeta extends StatelessWidget {
     this.certification,
     this.rating,
     this.ratings = const [],
+    this.techSpecs = const [],
     this.trailing,
   });
 
@@ -409,6 +510,7 @@ class DetailMeta extends StatelessWidget {
   final String? certification;
   final double? rating;
   final List<SourceRating> ratings;
+  final List<String> techSpecs;
 
   /// 角标后面的补充，如单集的「21:30 结束」
   final String? trailing;
@@ -434,6 +536,7 @@ class DetailMeta extends StatelessWidget {
             SourceRatingBadge(label: source.label, rating: source.value)
         else if (rating != null && rating > 0)
           TmdbRatingBadge(rating),
+        for (final spec in techSpecs) TechBadge(spec),
         if (trailing case final trailing?)
           Text(trailing, style: textTheme.labelSmall),
       ],

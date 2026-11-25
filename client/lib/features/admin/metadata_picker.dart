@@ -217,26 +217,10 @@ class _MetadataPickerDialogState extends ConsumerState<MetadataPickerDialog> {
               ),
             ),
           for (final candidate in results)
-            FocusRing(
-              child: ListTile(
-                title: Text(candidate.label),
-                trailing: candidate.score == null
-                    ? null
-                    : Text('匹配度 ${candidate.score}', style: text.labelMedium),
-                subtitle: Text(
-                  [
-                    if (candidate.originalTitle != null &&
-                        candidate.originalTitle != candidate.title)
-                      candidate.originalTitle!,
-                    'ID ${candidate.remoteId}',
-                    if (candidate.reasons.isNotEmpty)
-                      candidate.reasons.join('，'),
-                    if (candidate.overview?.isNotEmpty ?? false)
-                      candidate.overview!,
-                  ].join(' · '),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _CandidateCard(
+                candidate: candidate,
                 onTap: () => _choose(candidate),
               ),
             ),
@@ -310,6 +294,130 @@ class _MetadataPickerDialogState extends ConsumerState<MetadataPickerDialog> {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _CandidateCard extends StatelessWidget {
+  const _CandidateCard({required this.candidate, required this.onTap});
+
+  final MetadataCandidate candidate;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final original = candidate.originalTitle?.trim();
+    final hasOriginal =
+        original != null && original.isNotEmpty && original != candidate.title;
+    final overview = candidate.overview?.trim();
+    final score = candidate.score;
+    final highScore = score != null && score >= 80;
+
+    return FocusRing(
+      child: Material(
+        color: CinemaColors.surface1,
+        borderRadius: BorderRadius.circular(CinemaRadius.card),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(CinemaRadius.card),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        candidate.label,
+                        style: text.titleSmall?.copyWith(
+                          color: CinemaColors.text0,
+                        ),
+                      ),
+                    ),
+                    if (score != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: highScore
+                              ? CinemaColors.amberSoft
+                              : CinemaColors.ghost,
+                          borderRadius: BorderRadius.circular(
+                            CinemaRadius.tiny,
+                          ),
+                        ),
+                        child: Text(
+                          '$score%',
+                          style: text.labelSmall?.copyWith(
+                            color: highScore
+                                ? CinemaColors.amber
+                                : CinemaColors.text1,
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    if (hasOriginal) original,
+                    'ID ${candidate.remoteId}',
+                  ].join(' · '),
+                  style: text.bodySmall?.copyWith(color: CinemaColors.text2),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (candidate.reasons.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 3),
+                        child: Icon(
+                          Icons.verified_outlined,
+                          size: 14,
+                          color: CinemaColors.amber,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          candidate.reasons.join('，'),
+                          style: text.bodySmall?.copyWith(
+                            color: CinemaColors.text1,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (overview != null && overview.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    overview,
+                    style: text.bodySmall?.copyWith(color: CinemaColors.text2),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

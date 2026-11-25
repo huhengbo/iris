@@ -43,6 +43,18 @@ class ContentRatingBadge extends StatelessWidget {
   }
 }
 
+/// 极简技术规格角标，如 4K、杜比视界、HEVC、TrueHD。
+class TechBadge extends StatelessWidget {
+  const TechBadge(this.label, {super.key});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(child: Text(label));
+  }
+}
+
 /// 一个评分来源的角标，如「豆瓣 8.6」：来源用 text2，分数用 text0。
 class SourceRatingBadge extends StatelessWidget {
   const SourceRatingBadge({
@@ -54,6 +66,18 @@ class SourceRatingBadge extends StatelessWidget {
   final String label;
   final double rating;
 
+  static String _cleanLabel(String raw) {
+    final trimmed = raw.trim();
+    const suffix = '元数据';
+    if (trimmed.endsWith(suffix)) {
+      final stripped = trimmed
+          .substring(0, trimmed.length - suffix.length)
+          .trimRight();
+      if (stripped.isNotEmpty) return stripped;
+    }
+    return trimmed;
+  }
+
   @override
   Widget build(BuildContext context) {
     return _Badge(
@@ -61,7 +85,7 @@ class SourceRatingBadge extends StatelessWidget {
         TextSpan(
           children: [
             TextSpan(
-              text: '$label ',
+              text: '${_cleanLabel(label)} ',
               style: const TextStyle(color: CinemaColors.text2),
             ),
             TextSpan(text: rating.toStringAsFixed(1)),
